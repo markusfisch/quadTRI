@@ -1,0 +1,188 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<title>miniMALISM</title>
+<style type="text/css">
+
+body
+{
+	margin: 0; padding: 0;
+	overflow: hidden;
+	background: #f0f0f0;
+}
+
+canvas
+{
+	-webkit-transform: scale3d( 1, 1, 1 );
+}
+
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+
+"use strict";
+
+var Game = Game || {};
+
+;!function( g )
+{
+	var ctx,
+		width,
+		height,
+		centerX,
+		centerY;
+
+	function draw( time )
+	{
+		ctx.fillStyle = "#f0f0f0";
+		ctx.fillRect( 0, 0, width, height );
+
+		var r = Math.min( centerX, centerY )*.75;
+
+		ctx.fillStyle = "#111111";
+		ctx.beginPath();
+		ctx.arc(
+			Math.cos( time )*r+centerX,
+			Math.sin( time )*r+centerY,
+			centerX*.02,
+			0,
+			Math.PI*2,
+			false );
+		ctx.fill();
+	}
+
+	function run()
+	{
+		var time = new Date().getTime()*.002;
+
+		draw( time );
+		requestAnimFrame( run );
+	}
+
+	function coordsFromEvent( ev )
+	{
+		var x,
+			y;
+
+		if( ev.touches )
+		{
+			var t = ev.touches[0];
+
+			x = t.pageX;
+			y = t.pageY;
+		}
+		else if( window.opera )
+		{
+			x = event.clientX;
+			y = event.clientY;
+		}
+		else if( document.all )
+		{
+			if( document.documentElement &&
+				document.documentElement.scrollTop )
+			{
+				x = event.clientX+document.documentElement.scrollLeft;
+				y = event.clientY+document.documentElement.scrollTop;
+			}
+			else
+			{
+				x = event.clientX+document.body.scrollLeft;
+				y = event.clientY+document.body.scrollTop;
+			}
+		}
+		else
+		{
+			x = ev.pageX;
+			y = ev.pageY;
+		}
+
+		return { x: x, y: y }
+	}
+
+	function mouseMove( ev )
+	{
+		var p = coordsFromEvent( ev );
+
+		return true;
+	}
+
+	function mouseDown( ev )
+	{
+		var p = coordsFromEvent( ev );
+
+		return true;
+	}
+
+	function mouseUp( ev )
+	{
+		return true;
+	}
+
+	g.start = function( canvas )
+	{
+		ctx = canvas.getContext( "2d" );
+		width = canvas.width;
+		height = canvas.height;
+		centerX = width/2;
+		centerY = height/2;
+
+		canvas.onmousemove = mouseMove;
+		canvas.onmousedown = mouseDown;
+		canvas.onmouseup = mouseUp;
+
+		if( "ontouchstart" in document.documentElement )
+		{
+			canvas.ontouchmove = mouseMove;
+			canvas.ontouchstart = mouseDown;
+			canvas.ontouchend = mouseUp;
+		}
+
+		run();
+	};
+}( Game );
+
+// shim layer with setTimeout fallback
+// see http://paulirish.com/2011/requestanimationframe-for-smart-animating/
+window.requestAnimFrame =
+	window.requestAnimationFrame ||
+	window.webkitRequestAnimationFrame ||
+	window.mozRequestAnimationFrame ||
+	window.oRequestAnimationFrame ||
+	window.msRequestAnimationFrame ||
+	function( callback, element )
+	{
+		window.setTimeout(
+			function()
+			{
+				callback( new Date().getTime() );
+			},
+			16 );
+	};
+
+window.onload = function()
+{
+	// wait 500 ms to give mobile browsers enough time to get
+	// window.inner* properties right
+	setTimeout(
+		function()
+		{
+			var c = document.getElementById( "game" );
+
+			c.width = window.innerWidth;
+			c.height = window.innerHeight;
+			c.style.width = c.width+"px";
+			c.style.height = c.height+"px";
+
+			Game.start( c );
+		},
+		500 );
+};
+
+</script>
+</body>
+</html>
