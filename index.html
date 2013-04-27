@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<title>miniMALISM</title>
+<title>quadTRI</title>
 <style type="text/css">
 
 body
@@ -35,25 +35,52 @@ var Game = Game || {};
 		width,
 		height,
 		centerX,
-		centerY;
+		centerY,
+		triangles = [],
+		trianglesMax,
+		trianglesPerCol,
+		trianglesMod,
+		hover,
+		activePlayer = 0,
+		scores = [];
+
+	function Triangle( color, vertices )
+	{
+		this.player = -1;
+		this.color = color;
+		this.vertices = vertices;
+	}
+
+	function highlight( idx, color, player )
+	{
+		if( hover != idx )
+			return color;
+
+		if( player == 0 )
+			return "#88f";
+		else if( player == 1 )
+			return "#8f8";
+
+		return "#bbb";
+	}
 
 	function draw( time )
 	{
-		ctx.fillStyle = "#f0f0f0";
-		ctx.fillRect( 0, 0, width, height );
+		var n;
 
-		var r = Math.min( centerX, centerY )*.75;
+		for( n = trianglesMax; n--; )
+		{
+			var t = triangles[n],
+				v = t.vertices;
 
-		ctx.fillStyle = "#111111";
-		ctx.beginPath();
-		ctx.arc(
-			Math.cos( time )*r+centerX,
-			Math.sin( time )*r+centerY,
-			centerX*.02,
-			0,
-			Math.PI*2,
-			false );
-		ctx.fill();
+			ctx.fillStyle = highlight( n, t.color, t.player );
+			ctx.beginPath();
+			ctx.moveTo( v[0], v[1] );
+			ctx.lineTo( v[2], v[3] );
+			ctx.lineTo( v[4], v[5] );
+			ctx.closePath();
+			ctx.fill();
+		}
 	}
 
 	function run()
@@ -64,7 +91,33 @@ var Game = Game || {};
 		requestAnimFrame( run );
 	}
 
-	function coordsFromEvent( ev )
+	function posToTriangle( p )
+	{
+		var n,
+			x = p.x,
+			y = p.y;
+
+		for( n = trianglesMax; n--; )
+		{
+			var v = triangles[n].vertices,
+				a = { x: v[0], y: v[1] },
+				b = { x: v[2], y: v[3] },
+				c = { x: v[4], y: v[5] },
+				xa = x-a.x,
+				ya = y-a.y,
+				ps = (b.x-a.x)*ya-(b.y-a.y)*xa > 0;
+
+			if( (c.x-a.x)*ya-(c.y-a.y)*xa > 0 == ps ||
+				(c.x-b.x)*(y-b.y)-(c.y-b.y)*(x-b.x) > 0 != ps )
+				continue;
+
+			return n;
+		}
+
+		return -1;
+	}
+
+	function posFromEvent( ev )
 	{
 		var x,
 			y;
@@ -104,23 +157,231 @@ var Game = Game || {};
 		return { x: x, y: y }
 	}
 
+	function hitTriangle( idx )
+	{
+		var t = triangles[idx];
+
+		t.color = t.player ? "#040" : "#004";
+	}
+
+	function canScoreSmallQuad( idx, player, complete )
+	{
+		var triInCell = idx-(idx >> 2 << 2),
+			yan = idx;
+
+		if( idx & 1 )
+		{
+			var lastInRow = trianglesMax-1;
+
+			yan += triInCell == 1 ? -trianglesMod : trianglesMod;
+
+			if( yan < 0 )
+				yan += trianglesMax;
+			else if( yan > lastInRow )
+				yan -= trianglesMax;
+		}
+		else
+		{
+			var firstInCol =
+					Math.floor( idx / trianglesPerCol )*
+					trianglesPerCol,
+				lastInCol = firstInCol+trianglesMod;
+
+			yan += triInCell == 0 ? -2 : 2;
+
+			if( yan < firstInCol )
+				yan = lastInCol;
+			else if( yan > lastInCol )
+				yan = firstInCol;
+		}
+
+		var p = triangles[yan].player;
+		return p == player || (!complete && p < 0) ? yan : -1;
+	}
+
+	function scoreSmallQuad( idx, player )
+	{
+		var yan = canScoreSmallQuad( idx, player, true );
+
+		if( yan < 0 )
+			return;
+
+		scores[player] += 2;
+
+		hitTriangle( idx );
+		hitTriangle( yan );
+	}
+
+	function canScoreBigQuad( idx, player, complete )
+	{
+		var from = idx >> 2 << 2,
+			to = from+4,
+			n;
+
+		for( n = from; n < to; ++n )
+		{
+			var p = triangles[n].player;
+
+			if( complete )
+			{
+				if( p != player )
+					return -1;
+			}
+			else
+			{
+				if( p > -1 && p != player )
+					return -1;
+			}
+		}
+
+		return from;
+	}
+
+	function scoreBigQuad( idx, player )
+	{
+		var from = canScoreBigQuad( idx, player, true );
+
+		if( from < 0 )
+			return;
+
+		var to = from+4,
+			n;
+
+		for( n = from; n < to; ++n )
+			hitTriangle( n );
+
+		scores[player] += 4;
+	}
+
+	function isFinished()
+	{
+		var n;
+
+		for( n = trianglesMax; n--; )
+			if( triangles[n].player < 0 &&
+				(canScoreSmallQuad( n, activePlayer ) > -1 ||
+					canScoreBigQuad( n, activePlayer ) > -1) )
+				return false;
+
+		return true;
+	}
+
 	function mouseMove( ev )
 	{
-		var p = coordsFromEvent( ev );
+		hover = posToTriangle( posFromEvent( ev ) );
 
 		return true;
 	}
 
 	function mouseDown( ev )
 	{
-		var p = coordsFromEvent( ev );
-
 		return true;
 	}
 
 	function mouseUp( ev )
 	{
+		var n;
+
+		if( (n = posToTriangle( posFromEvent( ev ) )) > -1 )
+		{
+			var t = triangles[n];
+
+			if( t.player > -1 )
+				return true;
+
+			t.color = activePlayer ? "#2a2" : "#22a";
+			t.player = activePlayer;
+
+			scoreSmallQuad( n, activePlayer );
+			scoreBigQuad( n, activePlayer );
+
+			activePlayer ^= 1;
+		}
+
+		if( isFinished() )
+			alert( "finished!" );
+
 		return true;
+	}
+
+	function boardGeo( w, h )
+	{
+		var size = Math.min( w, h )*.9;
+
+		return {
+			left: (w-size)/2,
+			top: (h-size)/2,
+			width: size,
+			height: size };
+	}
+
+	function triangleColor( idx )
+	{
+		return idx & 1 ? "#e0e0e0" : "#d0d0d0";
+	}
+
+	function createTriangles( cols, rows, w, h )
+	{
+		var geo = boardGeo( w, h ),
+			left = geo.left,
+			top = geo.top,
+			qw = geo.width/cols,
+			qh = geo.height/rows,
+			r,
+			c,
+			t = [],
+			n = 0;
+
+		for( r = 0; r < rows; ++r )
+		{
+			var bottom = top+qh;
+			var cy = top+qh/2;
+
+			for( c = 0; c < cols; ++c )
+			{
+				var right = left+qw;
+				var cx = left+qw/2;
+
+				t[n++] = new Triangle(
+					triangleColor( n+c+r ),
+					[
+						left, bottom,
+						left, top,
+						cx, cy
+					] );
+
+				t[n++] = new Triangle(
+					triangleColor( n+c+r ),
+					[
+						left, top,
+						right, top,
+						cx, cy
+					] );
+
+				t[n++] = new Triangle(
+					triangleColor( n+c+r ),
+					[
+						right, top,
+						right, bottom,
+						cx, cy
+					] );
+
+				t[n++] = new Triangle(
+					triangleColor( n+c+r ),
+					[
+						right, bottom,
+						left, bottom,
+						cx, cy
+					] );
+
+				left = right;
+			}
+
+			left = geo.left;
+			top = bottom;
+		}
+
+		return t;
 	}
 
 	g.start = function( canvas )
@@ -141,6 +402,18 @@ var Game = Game || {};
 			canvas.ontouchstart = mouseDown;
 			canvas.ontouchend = mouseUp;
 		}
+
+		var rows = 4,
+			cols = 4;
+
+		triangles = createTriangles(
+			rows,
+			cols,
+			width,
+			height );
+		trianglesMax = triangles.length;
+		trianglesPerCol = cols << 2;
+		trianglesMod = trianglesPerCol-2;
 
 		run();
 	};
