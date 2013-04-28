@@ -22,7 +22,6 @@ canvas
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
 <script>
 
 "use strict";
@@ -31,35 +30,28 @@ var Game = Game || {};
 
 ;!function( g )
 {
-	var ctx,
+	var canvas = null,
+		ctx,
 		width,
 		height,
-		centerX,
-		centerY,
+		horizon,
+		quadCols = 4,
+		quadRows = 4,
 		triangles = [],
-		trianglesMax,
-		trianglesPerCol,
+		trianglesLength,
+		trianglesPerRow,
 		trianglesMod,
-		hover,
+		players = [],
 		activePlayer = 0,
-		scores = [];
-
-	function Triangle( color, vertices )
-	{
-		this.player = -1;
-		this.color = color;
-		this.vertices = vertices;
-	}
+		hover;
 
 	function highlight( idx, color, player )
 	{
 		if( hover != idx )
 			return color;
 
-		if( player == 0 )
-			return "#88f";
-		else if( player == 1 )
-			return "#8f8";
+		if( player > -1 )
+			return players[player].highlight;
 
 		return "#bbb";
 	}
@@ -68,18 +60,63 @@ var Game = Game || {};
 	{
 		var n;
 
-		for( n = trianglesMax; n--; )
+		ctx.clearRect( 0, 0, width, height );
+
+		for( n = 2; n--; )
+		{
+			var p = players[n],
+				d = p.display;
+
+			ctx.globalAlpha = n == activePlayer ? 1 : .25;
+			ctx.drawImage(
+				d.image,
+				d.left,
+				d.top );
+		}
+
+		ctx.globalAlpha = 1;
+
+		for( n = trianglesLength; n--; )
 		{
 			var t = triangles[n],
 				v = t.vertices;
 
-			ctx.fillStyle = highlight( n, t.color, t.player );
+			if( v[0] > horizon ||
+				v[1] > horizon ||
+				v[0] < -horizon ||
+				v[1] < -horizon )
+				continue;
+
+			var p = t.player,
+				m = t.move,
+				cos = p < 0 ? Math.cos( n+time )*5 : 0,
+				sin = p < 0 ? Math.sin( n+time )*5 : 0;
+
+			if( m != null )
+			{
+				v[0] += m[0];
+				v[2] += m[0];
+				v[4] += m[0];
+
+				v[1] += m[1];
+				v[3] += m[1];
+				v[5] += m[1];
+			}
+
+			ctx.fillStyle = highlight( n, t.color, p );
 			ctx.beginPath();
-			ctx.moveTo( v[0], v[1] );
-			ctx.lineTo( v[2], v[3] );
-			ctx.lineTo( v[4], v[5] );
+			ctx.moveTo( v[0]+cos, v[1]+sin );
+			ctx.lineTo( v[2]+sin, v[3]+cos );
+			ctx.lineTo( v[4]+cos, v[5]+sin );
 			ctx.closePath();
 			ctx.fill();
+
+			/*var w = ctx.measureText( n );
+			ctx.fillStyle = "#111";
+			ctx.fillText(
+				n,
+				(v[0]+v[2]+v[4])/3-w.width/2,
+				(v[1]+v[3]+v[5])/3 );*/
 		}
 	}
 
@@ -97,7 +134,7 @@ var Game = Game || {};
 			x = p.x,
 			y = p.y;
 
-		for( n = trianglesMax; n--; )
+		for( n = trianglesLength; n--; )
 		{
 			var v = triangles[n].vertices,
 				a = { x: v[0], y: v[1] },
@@ -157,11 +194,12 @@ var Game = Game || {};
 		return { x: x, y: y }
 	}
 
-	function hitTriangle( idx )
+	function scoreTriangle( idx )
 	{
 		var t = triangles[idx];
 
-		t.color = t.player ? "#040" : "#004";
+		t.scored = true;
+		t.move = [0, height*.05];
 	}
 
 	function canScoreSmallQuad( idx, player, complete )
@@ -171,20 +209,20 @@ var Game = Game || {};
 
 		if( idx & 1 )
 		{
-			var lastInRow = trianglesMax-1;
+			var lastInRow = trianglesLength-1;
 
 			yan += triInCell == 1 ? -trianglesMod : trianglesMod;
 
 			if( yan < 0 )
-				yan += trianglesMax;
+				yan += trianglesLength;
 			else if( yan > lastInRow )
-				yan -= trianglesMax;
+				yan -= trianglesLength;
 		}
 		else
 		{
 			var firstInCol =
-					Math.floor( idx / trianglesPerCol )*
-					trianglesPerCol,
+					Math.floor( idx / trianglesPerRow )*
+					trianglesPerRow,
 				lastInCol = firstInCol+trianglesMod;
 
 			yan += triInCell == 0 ? -2 : 2;
@@ -194,6 +232,9 @@ var Game = Game || {};
 			else if( yan > lastInCol )
 				yan = firstInCol;
 		}
+
+		if( triangles[yan].scored )
+			return -1;
 
 		var p = triangles[yan].player;
 		return p == player || (!complete && p < 0) ? yan : -1;
@@ -206,10 +247,10 @@ var Game = Game || {};
 		if( yan < 0 )
 			return;
 
-		scores[player] += 2;
+		players[player].update( 1 );
 
-		hitTriangle( idx );
-		hitTriangle( yan );
+		scoreTriangle( idx );
+		scoreTriangle( yan );
 	}
 
 	function canScoreBigQuad( idx, player, complete )
@@ -220,6 +261,9 @@ var Game = Game || {};
 
 		for( n = from; n < to; ++n )
 		{
+			if( triangles[n].scored )
+				return -1;
+
 			var p = triangles[n].player;
 
 			if( complete )
@@ -248,22 +292,24 @@ var Game = Game || {};
 			n;
 
 		for( n = from; n < to; ++n )
-			hitTriangle( n );
+			scoreTriangle( n );
 
-		scores[player] += 4;
+		players[player].update( 2 );
 	}
 
-	function isFinished()
+	function checkState()
 	{
 		var n;
 
-		for( n = trianglesMax; n--; )
+		for( n = trianglesLength; n--; )
 			if( triangles[n].player < 0 &&
 				(canScoreSmallQuad( n, activePlayer ) > -1 ||
 					canScoreBigQuad( n, activePlayer ) > -1) )
-				return false;
+				return;
 
-		return true;
+		alert( "game ended, player "+
+			(player[0].score > player[1].score ?
+				"1" : "2")+" won" );
 	}
 
 	function mouseMove( ev )
@@ -289,7 +335,7 @@ var Game = Game || {};
 			if( t.player > -1 )
 				return true;
 
-			t.color = activePlayer ? "#2a2" : "#22a";
+			t.color = players[activePlayer].color;
 			t.player = activePlayer;
 
 			scoreSmallQuad( n, activePlayer );
@@ -298,99 +344,289 @@ var Game = Game || {};
 			activePlayer ^= 1;
 		}
 
-		if( isFinished() )
-			alert( "finished!" );
+		checkState();
 
 		return true;
 	}
 
-	function boardGeo( w, h )
+	function createPlayers()
 	{
-		var size = Math.min( w, h )*.9;
+		var idx = 0;
 
-		return {
-			left: (w-size)/2,
-			top: (h-size)/2,
-			width: size,
-			height: size };
+		function Player( color, highlight )
+		{
+			this.index = idx++;
+			this.score = 0;
+			this.color = color;
+			this.highlight = highlight;
+			this.display = {};
+		}
+
+		Player.prototype.layoutDisplay = function( layout )
+		{
+			var c = document.createElement( "canvas" ),
+				w = layout.width,
+				h = layout.height;
+
+			c.width = w;
+			c.height = h;
+			c.style.width = w+"px";
+			c.style.height = h+"px";
+
+			this.display = {
+				image: c,
+				context: c.getContext( "2d" ),
+				left: layout.left[this.index],
+				top: layout.top[this.index],
+				textLeft: layout.textLeft,
+				textTop: layout.textTop,
+				width: w,
+				height: h,
+				fontSize: Math.round( Math.min( w, h )*.5 ) };
+
+			this.update( 0 );
+		}
+
+		Player.prototype.update = function( points )
+		{
+			var d = this.display,
+				ctx = d.context,
+				left = d.textLeft,
+				top = d.textTop,
+				w = d.width,
+				h = d.height,
+				fs = d.fontSize,
+				tl,
+				tt,
+				tr,
+				tb;
+
+			ctx.clearRect( 0, 0, w, h );
+
+			if( w > h )
+			{
+				var th = h/4;
+
+				tl = 0;
+				tr = h;
+				tt = th;
+				tb = h-th;
+
+				left += Math.round( h*1.5 );
+				ctx.textAlign = "start";
+				ctx.textBaseline = "middle";
+			}
+			else
+			{
+				tl = 0;
+				tr = w;
+				tt = 0;
+				tb = w/2;
+
+				top += Math.round( w*1.5 );
+				ctx.textAlign = "center";
+				ctx.textBaseline = "alphabetic";
+			}
+
+			ctx.fillStyle = this.color;
+			ctx.beginPath();
+			ctx.moveTo( tl+(tr-tl)/2, tt );
+			ctx.lineTo( tl, tb );
+			ctx.lineTo( tr, tb );
+			ctx.closePath();
+			ctx.fill();
+
+			ctx.font = fs+"px sans-serif";
+			ctx.fillText(
+				(this.score += points),
+				left,
+				top );
+		}
+
+		players = [
+			new Player(
+				"#399ed7",
+				"#0075c0" ),
+			new Player(
+				"#a8cd43",
+				"#7ba212" )];
 	}
 
-	function triangleColor( idx )
+	function layoutTriangles( layout )
 	{
-		return idx & 1 ? "#e0e0e0" : "#d0d0d0";
-	}
-
-	function createTriangles( cols, rows, w, h )
-	{
-		var geo = boardGeo( w, h ),
-			left = geo.left,
-			top = geo.top,
-			qw = geo.width/cols,
-			qh = geo.height/rows,
+		var left = layout.left,
+			top = layout.top,
+			w = layout.width/quadCols,
+			h = layout.height/quadRows,
+			w2 = w/2,
+			h2 = h/2,
 			r,
 			c,
-			t = [],
 			n = 0;
 
-		for( r = 0; r < rows; ++r )
+		for( r = 0; r < quadRows; ++r )
 		{
-			var bottom = top+qh;
-			var cy = top+qh/2;
+			var bottom = top+h;
+			var cy = top+h2;
 
-			for( c = 0; c < cols; ++c )
+			for( c = 0; c < quadCols; ++c )
 			{
-				var right = left+qw;
-				var cx = left+qw/2;
+				var right = left+w;
+				var cx = left+w2;
 
-				t[n++] = new Triangle(
-					triangleColor( n+c+r ),
-					[
-						left, bottom,
-						left, top,
-						cx, cy
-					] );
+				triangles[n++].vertices = [
+					left, bottom,
+					left, top,
+					cx, cy];
 
-				t[n++] = new Triangle(
-					triangleColor( n+c+r ),
-					[
-						left, top,
-						right, top,
-						cx, cy
-					] );
+				triangles[n++].vertices = [
+					left, top,
+					right, top,
+					cx, cy];
 
-				t[n++] = new Triangle(
-					triangleColor( n+c+r ),
-					[
-						right, top,
-						right, bottom,
-						cx, cy
-					] );
+				triangles[n++].vertices = [
+					right, top,
+					right, bottom,
+					cx, cy];
 
-				t[n++] = new Triangle(
-					triangleColor( n+c+r ),
-					[
-						right, bottom,
-						left, bottom,
-						cx, cy
-					] );
+				triangles[n++].vertices = [
+					right, bottom,
+					left, bottom,
+					cx, cy];
 
 				left = right;
 			}
 
-			left = geo.left;
+			left = layout.left;
 			top = bottom;
 		}
-
-		return t;
 	}
 
-	g.start = function( canvas )
+	function createTriangles()
 	{
+		function Triangle( color )
+		{
+			this.scored = false;
+			this.player = -1;
+			this.color = color;
+			this.vertices = null;
+			this.move = null;
+		}
+
+		var l = quadCols*quadRows*4,
+			n;
+
+		for( n = 0; n < l; ++n )
+			triangles[n] = new Triangle( n & 1 ?
+				"#e0e0e0" :
+				"#d0d0d0" );
+
+		trianglesLength = triangles.length;
+		trianglesPerRow = quadCols << 2
+		trianglesMod = trianglesPerRow-2;
+	}
+
+	function resizeCanvas( c, w, h )
+	{
+		c.width = w;
+		c.height = h;
+		c.style.width = w+"px";
+		c.style.height = h+"px";
+	}
+
+	function calcLayout( w, h )
+	{
+		var min = Math.min( w, h ),
+			size = Math.round( min*.9 ),
+			left = (w-size)/2,
+			top = (h-size)/2,
+			margin = (min-size)/2,
+			player,
+			playerSize = Math.round( size*.1 ),
+			playerSizeMargin = playerSize+margin,
+			playerSizeMargin2 = playerSizeMargin*2;
+
+		if( w > h )
+		{
+			if( playerSizeMargin2+size > w )
+			{
+				size = w-playerSizeMargin2;
+				left = (w-size)/2;
+				top = (h-size)/2;
+			}
+
+			player = {
+				left: [left-playerSizeMargin, left+size+margin],
+				top: [top, top],
+				textLeft: playerSize/2,
+				textTop: 0,
+				width: playerSize,
+				height: size };
+		}
+		else
+		{
+			if( playerSizeMargin2+size > h )
+			{
+				size = h-playerSizeMargin2;
+				left = (w-size)/2;
+				top = (h-size)/2;
+			}
+
+			player = {
+				left: [left, left],
+				top: [top-playerSizeMargin, top+size+margin],
+				textLeft: 0,
+				textTop: playerSize/2,
+				width: size,
+				height: playerSize };
+		}
+
+		return {
+			left: left,
+			top: top,
+			width: size,
+			height: size,
+			player: player };
+	}
+
+	function layoutGame( w, h )
+	{
+		resizeCanvas( canvas, w, h );
+
+		width = w;
+		height = h;
+		horizon = Math.max( w, h )*1.5;
+
+		var layout = calcLayout( w, h );
+
+		layoutTriangles( layout );
+
+		var n;
+		for( n = 2; n--; )
+			players[n].layoutDisplay( layout.player );
+	}
+
+	g.resize = function( w, h )
+	{
+		if( !canvas )
+			return;
+
+		layoutGame( w, h );
+	}
+
+	g.start = function( w, h )
+	{
+		if( !(canvas = document.createElement( "canvas" )) )
+			return;
+
 		ctx = canvas.getContext( "2d" );
-		width = canvas.width;
-		height = canvas.height;
-		centerX = width/2;
-		centerY = height/2;
+
+		createTriangles();
+		createPlayers();
+
+		layoutGame( w, h );
+
+		document.body.appendChild( canvas );
 
 		canvas.onmousemove = mouseMove;
 		canvas.onmousedown = mouseDown;
@@ -402,18 +638,6 @@ var Game = Game || {};
 			canvas.ontouchstart = mouseDown;
 			canvas.ontouchend = mouseUp;
 		}
-
-		var rows = 4,
-			cols = 4;
-
-		triangles = createTriangles(
-			rows,
-			cols,
-			width,
-			height );
-		trianglesMax = triangles.length;
-		trianglesPerCol = cols << 2;
-		trianglesMod = trianglesPerCol-2;
 
 		run();
 	};
@@ -437,6 +661,13 @@ window.requestAnimFrame =
 			16 );
 	};
 
+window.onresize = function()
+{
+	Game.resize(
+		window.innerWidth,
+		window.innerHeight );
+}
+
 window.onload = function()
 {
 	// wait 500 ms to give mobile browsers enough time to get
@@ -444,14 +675,9 @@ window.onload = function()
 	setTimeout(
 		function()
 		{
-			var c = document.getElementById( "game" );
-
-			c.width = window.innerWidth;
-			c.height = window.innerHeight;
-			c.style.width = c.width+"px";
-			c.style.height = c.height+"px";
-
-			Game.start( c );
+			Game.start(
+				window.innerWidth,
+				window.innerHeight );
 		},
 		500 );
 };
