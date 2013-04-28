@@ -35,15 +35,17 @@ var Game = Game || {};
 		width,
 		height,
 		horizon,
-		quadCols = 4,
-		quadRows = 4,
+		normalMag,
+		quadCols = 3,
+		quadRows = 3,
 		triangles = [],
 		trianglesLength,
 		trianglesPerRow,
 		trianglesMod,
 		players = [],
 		activePlayer = 0,
-		hover;
+		hover,
+		fine = false;
 
 	function highlight( idx, color, player )
 	{
@@ -58,6 +60,9 @@ var Game = Game || {};
 
 	function draw( time )
 	{
+		if( fine )
+			return;
+
 		var n;
 
 		ctx.clearRect( 0, 0, width, height );
@@ -89,18 +94,21 @@ var Game = Game || {};
 
 			var p = t.player,
 				m = t.move,
-				cos = p < 0 ? Math.cos( n+time )*5 : 0,
-				sin = p < 0 ? Math.sin( n+time )*5 : 0;
+				cos = p < 0 ? Math.cos( n+time )*normalMag : 0,
+				sin = p < 0 ? Math.sin( n+time )*normalMag : 0;
 
 			if( m != null )
 			{
-				v[0] += m[0];
-				v[2] += m[0];
-				v[4] += m[0];
+				var x = m[0]*time,
+					y = m[1]*time;
 
-				v[1] += m[1];
-				v[3] += m[1];
-				v[5] += m[1];
+				v[0] += x;
+				v[2] += x;
+				v[4] += x;
+
+				v[1] += y;
+				v[3] += y;
+				v[5] += y;
 			}
 
 			ctx.fillStyle = highlight( n, t.color, p );
@@ -199,7 +207,7 @@ var Game = Game || {};
 		var t = triangles[idx];
 
 		t.scored = true;
-		t.move = [0, height*.05];
+		t.move = [0, .00000001];
 	}
 
 	function canScoreSmallQuad( idx, player, complete )
@@ -307,9 +315,69 @@ var Game = Game || {};
 					canScoreBigQuad( n, activePlayer ) > -1) )
 				return;
 
-		alert( "game ended, player "+
-			(player[0].score > player[1].score ?
-				"1" : "2")+" won" );
+		fine = true;
+
+		var s0 = players[0].score,
+			s1 = players[1].score,
+			winner,
+			msg,
+			color;
+
+		if( s0 > s1 )
+		{
+			winner = 0;
+			msg = "Player 1 won!";
+			color = players[0].color;
+		}
+		else if( s0 < s1 )
+		{
+			winner = 1;
+			msg = "Player 1 won!";
+			color = players[1].color;
+		}
+		else
+		{
+			winner = -1;
+			msg = "Draw!";
+			color = "#888";
+		}
+
+		if( winner > -1 )
+			++players[winner].wins;
+
+		ctx.clearRect( 0, 0, width, height );
+		ctx.fillStyle = color;
+		ctx.textAlign = "center";
+		ctx.textBaseline = "middle";
+		ctx.font = Math.round( width*.05 )+"px sans-serif";
+		ctx.fillText(
+			msg,
+			width/2,
+			height/2 );
+	}
+
+	function newGame()
+	{
+		var n;
+
+		for( n = trianglesLength; n--; )
+			triangles[n].reset();
+
+		for( n = 2; n--; )
+		{
+			players[n].score = 0;
+			players[n].update( 0 );
+		}
+
+		if( (quadCols = ++quadRows) > 5 )
+			quadCols = quadRows = 2;
+
+		createTriangles();
+
+		var layout = calcLayout( width, height );
+		layoutTriangles( layout.board );
+
+		fine = false;
 	}
 
 	function mouseMove( ev )
@@ -326,6 +394,12 @@ var Game = Game || {};
 
 	function mouseUp( ev )
 	{
+		if( fine )
+		{
+			newGame();
+			return true;
+		}
+
 		var n;
 
 		if( (n = posToTriangle( posFromEvent( ev ) )) > -1 )
@@ -357,6 +431,7 @@ var Game = Game || {};
 		{
 			this.index = idx++;
 			this.score = 0;
+			this.wins = 0;
 			this.color = color;
 			this.highlight = highlight;
 			this.display = {};
@@ -366,7 +441,8 @@ var Game = Game || {};
 		{
 			var c = document.createElement( "canvas" ),
 				w = layout.width,
-				h = layout.height;
+				h = layout.height,
+				bigFont = Math.round( Math.min( w, h )*.5 );
 
 			c.width = w;
 			c.height = h;
@@ -382,7 +458,8 @@ var Game = Game || {};
 				textTop: layout.textTop,
 				width: w,
 				height: h,
-				fontSize: Math.round( Math.min( w, h )*.5 ) };
+				bigFont: bigFont,
+				smallFont: Math.round( bigFont*.6 ) };
 
 			this.update( 0 );
 		}
@@ -395,7 +472,10 @@ var Game = Game || {};
 				top = d.textTop,
 				w = d.width,
 				h = d.height,
-				fs = d.fontSize,
+				bigFont = d.bigFont,
+				smallFont = d.smallFont,
+				xPlus = 0,
+				yPlus = 0,
 				tl,
 				tt,
 				tr,
@@ -412,7 +492,7 @@ var Game = Game || {};
 				tt = th;
 				tb = h-th;
 
-				left += Math.round( h*1.5 );
+				xPlus = 3;
 				ctx.textAlign = "start";
 				ctx.textBaseline = "middle";
 			}
@@ -423,7 +503,7 @@ var Game = Game || {};
 				tt = 0;
 				tb = w/2;
 
-				top += Math.round( w*1.5 );
+				yPlus = 2;
 				ctx.textAlign = "center";
 				ctx.textBaseline = "alphabetic";
 			}
@@ -436,9 +516,36 @@ var Game = Game || {};
 			ctx.closePath();
 			ctx.fill();
 
-			ctx.font = fs+"px sans-serif";
+			left += xPlus*h;
+			top += yPlus*w;
+
+			ctx.font = smallFont+"px sans-serif";
+			ctx.fillText(
+				"score",
+				left,
+				top );
+			left += xPlus*smallFont;
+			top += yPlus*smallFont;
+
+			ctx.font = bigFont+"px sans-serif";
 			ctx.fillText(
 				(this.score += points),
+				left,
+				top );
+			left += xPlus*bigFont;
+			top += yPlus*bigFont;
+
+			ctx.font = smallFont+"px sans-serif";
+			ctx.fillText(
+				"wins",
+				left,
+				top );
+			left += xPlus*smallFont;
+			top += yPlus*smallFont;
+
+			ctx.font = bigFont+"px sans-serif";
+			ctx.fillText(
+				this.wins,
 				left,
 				top );
 		}
@@ -506,15 +613,24 @@ var Game = Game || {};
 	{
 		function Triangle( color )
 		{
+			this.unselectedColor = color;
+			this.vertices = null;
+
+			this.reset();
+		}
+
+		Triangle.prototype.reset = function()
+		{
+			this.color = this.unselectedColor;
 			this.scored = false;
 			this.player = -1;
-			this.color = color;
-			this.vertices = null;
 			this.move = null;
 		}
 
 		var l = quadCols*quadRows*4,
 			n;
+
+		triangles = [];
 
 		for( n = 0; n < l; ++n )
 			triangles[n] = new Triangle( n & 1 ?
@@ -582,10 +698,11 @@ var Game = Game || {};
 		}
 
 		return {
-			left: left,
-			top: top,
-			width: size,
-			height: size,
+			board: {
+				left: left,
+				top: top,
+				width: size,
+				height: size },
 			player: player };
 	}
 
@@ -596,10 +713,11 @@ var Game = Game || {};
 		width = w;
 		height = h;
 		horizon = Math.max( w, h )*1.5;
+		normalMag = Math.min( w, h )*.01;
 
 		var layout = calcLayout( w, h );
 
-		layoutTriangles( layout );
+		layoutTriangles( layout.board );
 
 		var n;
 		for( n = 2; n--; )
