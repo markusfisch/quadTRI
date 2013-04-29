@@ -4,6 +4,10 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
+<link rel="icon" href="favicon.ico" type="image/x-icon"/>
+<link rel="apple-touch-icon-precomposed" href="apple-touch-icon-114x114-precomposed.png"/>
+<link rel="apple-touch-icon-precomposed" href="apple-touch-icon-72x72-precomposed.png"/>
+<link rel="apple-touch-icon-precomposed" href="apple-touch-icon-precomposed.png"/>
 <title>quadTRI</title>
 <style type="text/css">
 
@@ -32,9 +36,11 @@ var Game = Game || {};
 {
 	var canvas = null,
 		ctx,
+		ratio,
 		width,
 		height,
 		horizon,
+		lastTime = 0,
 		normalMag,
 		quadCols = 3,
 		quadRows = 3,
@@ -63,11 +69,9 @@ var Game = Game || {};
 		if( fine )
 			return;
 
-		var n;
-
 		ctx.clearRect( 0, 0, width, height );
 
-		for( n = 2; n--; )
+		for( var n = 2; n--; )
 		{
 			var p = players[n],
 				d = p.display;
@@ -81,10 +85,14 @@ var Game = Game || {};
 
 		ctx.globalAlpha = 1;
 
-		for( n = trianglesLength; n--; )
+		var elapsedTime = time-lastTime;
+		lastTime = time;
+
+		for( var n = trianglesLength; n--; )
 		{
 			var t = triangles[n],
-				v = t.vertices;
+				v = t.vertices,
+				d = t.drawnVertices;
 
 			if( v[0] > horizon ||
 				v[1] > horizon ||
@@ -94,13 +102,14 @@ var Game = Game || {};
 
 			var p = t.player,
 				m = t.move,
-				cos = p < 0 ? Math.cos( n+time )*normalMag : 0,
-				sin = p < 0 ? Math.sin( n+time )*normalMag : 0;
+				f = n+time*.002,
+				cos = p < 0 ? Math.cos( f )*normalMag : 0,
+				sin = p < 0 ? Math.sin( f )*normalMag : 0;
 
 			if( m != null )
 			{
-				var x = m[0]*time,
-					y = m[1]*time;
+				var x = m[0]*elapsedTime,
+					y = m[1]*elapsedTime;
 
 				v[0] += x;
 				v[2] += x;
@@ -111,26 +120,26 @@ var Game = Game || {};
 				v[5] += y;
 			}
 
+			d[0] = v[0]+cos;
+			d[1] = v[1]+sin;
+			d[2] = v[2]+sin;
+			d[3] = v[3]+cos;
+			d[4] = v[4]+cos;
+			d[5] = v[5]+sin;
+
 			ctx.fillStyle = highlight( n, t.color, p );
 			ctx.beginPath();
-			ctx.moveTo( v[0]+cos, v[1]+sin );
-			ctx.lineTo( v[2]+sin, v[3]+cos );
-			ctx.lineTo( v[4]+cos, v[5]+sin );
+			ctx.moveTo( d[0], d[1] );
+			ctx.lineTo( d[2], d[3] );
+			ctx.lineTo( d[4], d[5] );
 			ctx.closePath();
 			ctx.fill();
-
-			/*var w = ctx.measureText( n );
-			ctx.fillStyle = "#111";
-			ctx.fillText(
-				n,
-				(v[0]+v[2]+v[4])/3-w.width/2,
-				(v[1]+v[3]+v[5])/3 );*/
 		}
 	}
 
 	function run()
 	{
-		var time = new Date().getTime()*.002;
+		var time = new Date().getTime();
 
 		draw( time );
 		requestAnimFrame( run );
@@ -144,7 +153,7 @@ var Game = Game || {};
 
 		for( n = trianglesLength; n--; )
 		{
-			var v = triangles[n].vertices,
+			var v = triangles[n].drawnVertices,
 				a = { x: v[0], y: v[1] },
 				b = { x: v[2], y: v[3] },
 				c = { x: v[4], y: v[5] },
@@ -207,7 +216,7 @@ var Game = Game || {};
 		var t = triangles[idx];
 
 		t.scored = true;
-		t.move = [0, .00000001];
+		t.move = [0, 1];
 	}
 
 	function canScoreSmallQuad( idx, player, complete )
@@ -307,9 +316,7 @@ var Game = Game || {};
 
 	function checkState()
 	{
-		var n;
-
-		for( n = trianglesLength; n--; )
+		for( var n = trianglesLength; n--; )
 			if( triangles[n].player < 0 &&
 				(canScoreSmallQuad( n, activePlayer ) > -1 ||
 					canScoreBigQuad( n, activePlayer ) > -1) )
@@ -326,19 +333,19 @@ var Game = Game || {};
 		if( s0 > s1 )
 		{
 			winner = 0;
-			msg = "Player 1 won!";
+			msg = "PLAYER 1 WON!";
 			color = players[0].color;
 		}
 		else if( s0 < s1 )
 		{
 			winner = 1;
-			msg = "Player 1 won!";
+			msg = "PLAYER 2 WON!";
 			color = players[1].color;
 		}
 		else
 		{
 			winner = -1;
-			msg = "Draw!";
+			msg = "DRAW!";
 			color = "#888";
 		}
 
@@ -358,12 +365,10 @@ var Game = Game || {};
 
 	function newGame()
 	{
-		var n;
-
-		for( n = trianglesLength; n--; )
+		for( var n = trianglesLength; n--; )
 			triangles[n].reset();
 
-		for( n = 2; n--; )
+		for( var n = 2; n--; )
 		{
 			players[n].score = 0;
 			players[n].update( 0 );
@@ -446,8 +451,6 @@ var Game = Game || {};
 
 			c.width = w;
 			c.height = h;
-			c.style.width = w+"px";
-			c.style.height = h+"px";
 
 			this.display = {
 				image: c,
@@ -615,6 +618,7 @@ var Game = Game || {};
 		{
 			this.unselectedColor = color;
 			this.vertices = null;
+			this.drawnVertices = [];
 
 			this.reset();
 		}
@@ -628,26 +632,36 @@ var Game = Game || {};
 		}
 
 		var l = quadCols*quadRows*4,
-			n;
+			n = 0;
 
 		triangles = [];
 
-		for( n = 0; n < l; ++n )
-			triangles[n] = new Triangle( n & 1 ?
-				"#e0e0e0" :
-				"#d0d0d0" );
+		for( var r = 0; r < quadRows; ++r )
+			for( var c = 0; c < quadCols; ++c )
+				for( var t = 4; t--; )
+					triangles[n++] = new Triangle( n+r+c & 1 ?
+						"#e0e0e0" :
+						"#d0d0d0" );
 
-		trianglesLength = triangles.length;
+		trianglesLength = l;
 		trianglesPerRow = quadCols << 2
 		trianglesMod = trianglesPerRow-2;
 	}
 
 	function resizeCanvas( c, w, h )
 	{
-		c.width = w;
-		c.height = h;
+		c.width = w*ratio;
+		c.height = h*ratio;
 		c.style.width = w+"px";
 		c.style.height = h+"px";
+
+		c.getContext("2d").setTransform(
+			ratio,
+			0,
+			0,
+			ratio,
+			0,
+			0 );
 	}
 
 	function calcLayout( w, h )
@@ -715,11 +729,11 @@ var Game = Game || {};
 		horizon = Math.max( w, h )*1.5;
 		normalMag = Math.min( w, h )*.01;
 
-		var layout = calcLayout( w, h );
+		var layout = calcLayout( w, h ),
+			n;
 
 		layoutTriangles( layout.board );
 
-		var n;
 		for( n = 2; n--; )
 			players[n].layoutDisplay( layout.player );
 	}
@@ -738,6 +752,15 @@ var Game = Game || {};
 			return;
 
 		ctx = canvas.getContext( "2d" );
+		//ctx.mozImageSmoothingEnabled = false;
+
+		ratio = (window.devicePixelRatio || 1)/
+			(ctx.webkitBackingStorePixelRatio ||
+				ctx.mozBackingStorePixelRatio ||
+				ctx.msBackingStorePixelRatio ||
+				ctx.oBackingStorePixelRatio ||
+				ctx.backingStorePixelRatio ||
+				1);
 
 		createTriangles();
 		createPlayers();

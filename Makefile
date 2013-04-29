@@ -1,4 +1,4 @@
-OBJECTS = *.html
+OBJECTS = *.html *.ico *.png
 HTDOCS = hhsw.de@ssh.strato.de:sites/proto/ld26/
 OPTIONS = --recursive \
 	--links \
