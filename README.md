@@ -8,6 +8,8 @@ Theme was _Minimalism_.
 View original
 [entry](http://www.ludumdare.com/compo/ludum-dare-26/?uid=19466).
 
+![Screenshot](https://markusfisch.github.com/quadTRI/screenshot.png)
+
 Play it
 -------
 
