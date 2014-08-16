@@ -1,0 +1,1035 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
+<title>quadTRI</title>
+<link rel="shortcut icon" href="icon.png"/>
+<style>
+
+html,
+body
+{
+	background: #111;
+	margin: 0; padding: 0;
+	overflow: hidden;
+	-ms-touch-action: none;
+}
+
+canvas
+{
+	position: fixed;
+	left: 0; top: 0;
+	z-index: 1;
+}
+
+#Message
+{
+	position: fixed;
+	z-index: 9;
+	left: 0; top: 0;
+	right: 0; bottom: 0;
+	width: 100%; height: 100%;
+	padding: 0;
+	opacity: .75;
+	filter: alpha(opacity=75);
+	-webkit-transform-style: preserve-3d;
+	-moz-transform-style: preserve-3d;
+	transform-style: preserve-3d;
+}
+
+#MessageText
+{
+	position: relative;
+	top: 50%;
+	-webkit-transform: translateY( -50% );
+	-ms-transform: translateY( -50% );
+	transform: translateY( -50% );
+	width: 60%;
+	margin: 0 auto; padding: 1em;
+	font: 20pt sans-serif; color: #fff;
+	font-weight: lighter;
+	letter-spacing: .2em;
+	line-height: 150%;
+	text-align: center;
+	text-transform: uppercase;
+}
+
+h1
+{
+	margin-top: 0;
+	padding-top: 0;
+}
+
+@media screen and (max-width: 900px), screen and (max-height: 560px)
+{
+	#MessageText
+	{
+		font-size: 16pt;
+	}
+}
+
+@media screen and (max-width: 700px), screen and (max-height: 420px)
+{
+	#MessageText
+	{
+		font-size: 12pt;
+	}
+}
+
+@media screen and (max-width: 360px), screen and (max-height: 360px)
+{
+	#MessageText
+	{
+		font-size: 8pt;
+	}
+}
+
+</style>
+</head>
+<body>
+<div id="Message"><div id="MessageText">Initializing...</div></div>
+<script>
+
+"use strict";
+
+var requestAnimFrame =
+		window.requestAnimationFrame ||
+		window.webkitRequestAnimationFrame ||
+		window.mozRequestAnimationFrame ||
+		window.msRequestAnimationFrame ||
+		window.oRequestAnimationFrame ||
+		function( callback )
+		{
+			window.setTimeout( callback, 16 );
+		},
+	message,
+	resizeTimer,
+	restartTimer,
+	canvas,
+	ctx,
+	ratio,
+	width,
+	height,
+	normalMag,
+	now,
+	last,
+	factor,
+	pointerX,
+	pointerY,
+	pointerIsDown = false,
+	colors = [
+		"#399ed7",
+		"#9e39d7",
+		"#39d79e",
+		"#d7399e"],
+	colorsLength = colors.length,
+	colorCurrent = colors[0],
+	colorStack,
+	colorCursor = 0,
+	quadCols = 2,
+	quadRows = 2,
+	triangles,
+	trianglesLength,
+	trianglesPerRow,
+	trianglesMod,
+	triangleHighlighted = -1,
+	fragments,
+	fragmentsLength,
+	fragmentCursor = 0,
+	fragmentSpeed,
+	fragmentThreshold,
+	players,
+	playersLength,
+	playerCurrent = 0,
+	scoresWidth,
+	scoresHeight,
+	offsetX = 0,
+	offsetY = 0,
+	quake = 0,
+	slideIn = 0,
+	slideOut = 0,
+	slideDuration = 500,
+	started = false,
+	finished = false;
+
+function drawTriangle( v )
+{
+	ctx.beginPath();
+	ctx.moveTo( v[0] | 0, v[1] | 0 );
+	ctx.lineTo( v[2] | 0, v[3] | 0 );
+	ctx.lineTo( v[4] | 0, v[5] | 0 );
+	ctx.closePath();
+	ctx.fill();
+}
+
+function triangleCenterX( v )
+{
+	return (v[0]+v[2]+v[4])/3;
+}
+
+function triangleCenterY( v )
+{
+	return (v[1]+v[3]+v[5])/3;
+}
+
+function addFragment( x1, y1, x2, y2, x3, y3, cx, cy, color )
+{
+	if( ++fragmentCursor >= fragmentsLength )
+		fragmentCursor = 0;
+
+	var f = fragments[fragmentCursor],
+		v = f.vertices;
+
+	v[0] = x1;
+	v[1] = y1;
+	v[2] = x2;
+	v[3] = y2;
+	v[4] = x3;
+	v[5] = y3;
+
+	var a = Math.atan2(
+		triangleCenterY( v )-cy,
+		triangleCenterX( v )-cx );
+
+	f.vx = Math.cos( a )*fragmentSpeed;
+	f.vy = Math.sin( a )*fragmentSpeed;
+	f.spin = .031415+Math.random()*.031415;
+	f.color = color;
+	f.live = (30+Math.random()*120) | 0;
+	f.alive = true;
+
+	if( Math.abs( x2-x1 ) > fragmentThreshold ||
+		Math.abs( x3-x1 ) > fragmentThreshold )
+		fragmentTriangle( v, color );
+}
+
+function fragmentTriangle( v, color )
+{
+	var x1 = v[0],
+		y1 = v[1],
+		x2 = v[2],
+		y2 = v[3],
+		x3 = v[4],
+		y3 = v[5],
+		dx = x2-x1,
+		dy = y2-y1,
+		mx = x1+dx*.5,
+		my = y1+dy*.5,
+		cx = triangleCenterX( v ),
+		cy = triangleCenterY( v );
+
+	addFragment( x1, y1, x3, y3, mx, my, cx, cx, color );
+	addFragment( x2, y2, x3, y3, mx, my, cx, cy, color );
+}
+
+function drawFragments()
+{
+	for( var n = fragmentsLength; n--; )
+	{
+		var f = fragments[n];
+
+		if( !f.alive )
+			continue;
+
+		f.fade();
+
+		ctx.fillStyle = f.color;
+		drawTriangle( f.vertices );
+	}
+}
+
+function drawTriangles()
+{
+	for( var n = trianglesLength; n--; )
+	{
+		var t = triangles[n];
+
+		if( t.scored ||
+			t.color == colorCurrent )
+			continue;
+
+		var v = t.vertices,
+			d = t.drawnVertices,
+			c = t.colored,
+			f = n+now*.002,
+			cos = c ? 0 : Math.cos( f )*normalMag,
+			sin = c ? 0 : Math.sin( f )*normalMag;
+
+		d[0] = v[0]+cos+offsetX;
+		d[1] = v[1]+sin+offsetY;
+		d[2] = v[2]+sin+offsetX;
+		d[3] = v[3]+cos+offsetY;
+		d[4] = v[4]+cos+offsetX;
+		d[5] = v[5]+sin+offsetY;
+
+		if( t.colored )
+		{
+			ctx.globalAlpha = 1;
+			ctx.fillStyle = t.color;
+		}
+		else if( n == triangleHighlighted )
+		{
+			ctx.globalAlpha = 1;
+			ctx.fillStyle = "#ffffff";
+		}
+		else
+		{
+			ctx.globalAlpha = .1;
+			ctx.fillStyle = t.color;
+		}
+
+		drawTriangle( d );
+	}
+
+	ctx.globalAlpha = 1;
+}
+
+function drawScores()
+{
+	for( var n = playersLength; n--; )
+	{
+		var p = players[n];
+
+		if( playerCurrent == n )
+		{
+			var next = colorCursor+1,
+				left = trianglesLength-next;
+
+			ctx.globalAlpha = 1;
+
+			if( left < 0 )
+			{
+				ctx.fillStyle = "#fff";
+				ctx.fillRect(
+					p.sx,
+					p.sy,
+					scoresWidth,
+					scoresHeight );
+			}
+
+			var px = 0,
+				py = 0,
+				cw = scoresWidth,
+				ch = scoresHeight,
+				x = p.sx,
+				y = p.sy;
+
+			if( scoresWidth > scoresHeight )
+				cw = px = scoresWidth/left;
+			else
+				ch = py = scoresHeight/left;
+
+			for( var c = next; c < trianglesLength; ++c )
+			{
+				ctx.fillStyle = colorStack[c];
+				ctx.fillRect(
+					x,
+					y,
+					cw,
+					ch );
+
+				x += px;
+				y += py;
+			}
+		}
+		else
+		{
+			ctx.globalAlpha = .1;
+			ctx.fillStyle = "#000";
+			ctx.fillRect(
+				p.sx,
+				p.sy,
+				scoresWidth,
+				scoresHeight );
+		}
+	}
+
+	ctx.globalAlpha = 1;
+}
+
+function drawBackground()
+{
+	ctx.globalAlpha = 1;
+	ctx.fillStyle = colorCurrent;
+	ctx.fillRect( 0, 0, width, height );
+}
+
+function offset()
+{
+	if( quake > 0 )
+	{
+		if( quake < 1 )
+			offsetX = offsetY = quake = 0;
+		else
+		{
+			offsetX = Math.cos( now )*quake;
+			offsetY = Math.sin( now )*quake;
+			quake -= factor;
+		}
+	}
+	else if( slideIn > 0 )
+	{
+		var t = slideIn-now;
+
+		if( t < 0 )
+		{
+			slideIn = 0;
+			offsetY = 0;
+		}
+		else
+		{
+			t /= slideDuration;
+			offsetY = height*t*t;
+		}
+	}
+	else if( slideOut > 0 )
+	{
+		var t = slideOut-now;
+
+		if( t < 0 )
+		{
+			slideOut = 0;
+			offsetY = height;
+
+			slideIn = now+slideDuration;
+		}
+		else
+		{
+			t /= slideDuration;
+			offsetY = height-height*t*t;
+		}
+	}
+}
+
+function run()
+{
+	now = new Date().getTime();
+	factor = (now-last)/16;
+	last = now;
+
+	offset();
+
+	drawBackground();
+	drawScores();
+	drawTriangles();
+	drawFragments();
+
+	requestAnimFrame( run );
+}
+
+function getDiamondPartner( idx )
+{
+	var triInCell = idx-(idx >> 2 << 2),
+		yan = idx;
+
+	if( idx & 1 )
+	{
+		var last = trianglesLength-1;
+
+		yan += triInCell == 1 ? -trianglesMod : trianglesMod;
+
+		if( yan < 0 )
+			yan += trianglesLength;
+		else if( yan > last )
+			yan -= trianglesLength;
+	}
+	else
+	{
+		var firstInCol =
+				Math.floor( idx / trianglesPerRow )*
+				trianglesPerRow,
+			lastInCol = firstInCol+trianglesMod;
+
+		yan += triInCell == 0 ? -2 : 2;
+
+		if( yan < firstInCol )
+			yan = lastInCol;
+		else if( yan > lastInCol )
+			yan = firstInCol;
+	}
+
+	return yan;
+}
+
+function canScoreDiamond( idx, afterMove )
+{
+	var t = triangles[idx];
+
+	if( t.scored )
+		return -1;
+
+	var yan = getDiamondPartner( idx ),
+		y = triangles[yan];
+
+	if( y.scored )
+		return -1;
+
+	return y.color == t.color ||
+		(!afterMove && (!t.colored || !y.colored)) ? yan : -1;
+}
+
+function scoreTriangle( t )
+{
+	t.scored = true;
+	quake = 10;
+
+	fragmentTriangle( t.vertices, t.color );
+}
+
+function scoreDiamond( idx, player )
+{
+	var yan = canScoreDiamond( idx, true );
+
+	if( yan < 0 )
+		return;
+
+	++players[player].score;
+
+	scoreTriangle( triangles[idx] );
+	scoreTriangle( triangles[yan] );
+}
+
+function checkFinished()
+{
+	for( var n = trianglesLength; n--; )
+		if( !triangles[n].colored )
+			return;
+
+	finished = true;
+	triangleHighlighted = -1;
+
+	var highest = -1,
+		winner = -1;
+
+	for( var n = playersLength; n--; )
+	{
+		var score = players[n].score;
+
+		if( score == highest )
+			winner = -1;
+		else if( score > highest )
+		{
+			highest = score;
+			winner = n+1;
+		}
+	}
+
+	message.text.innerHTML = winner > 0 ?
+		"Player "+winner+" won!" :
+		"Draw!";
+
+	message.style.display = "block";
+}
+
+function nextColor()
+{
+	colorCursor = ++colorCursor % trianglesLength;
+	colorCurrent = colorStack[colorCursor];
+}
+
+function triangleAt( x, y )
+{
+	var n;
+
+	for( n = trianglesLength; n--; )
+	{
+		var v = triangles[n].drawnVertices,
+			a = { x: v[0], y: v[1] },
+			b = { x: v[2], y: v[3] },
+			c = { x: v[4], y: v[5] },
+			xa = x-a.x,
+			ya = y-a.y,
+			ps = (b.x-a.x)*ya-(b.y-a.y)*xa > 0;
+
+		if( (c.x-a.x)*ya-(c.y-a.y)*xa > 0 == ps ||
+			(c.x-b.x)*(y-b.y)-(c.y-b.y)*(x-b.x) > 0 != ps )
+			continue;
+
+		return n;
+	}
+
+	return -1;
+}
+
+function colorTriangleAt( x, y )
+{
+	if( finished )
+		return;
+
+	var n;
+
+	if( (n = triangleAt( x, y )) > -1 )
+	{
+		var t = triangles[n];
+
+		if( t.colored )
+			return true;
+
+		t.color = colorCurrent;
+		t.colored = true;
+
+		scoreDiamond( n, playerCurrent );
+
+		playerCurrent = ++playerCurrent % playersLength;
+		nextColor();
+	}
+
+	checkFinished();
+}
+
+function highlightTriangleAt( x, y )
+{
+	if( finished ||
+		!pointerIsDown )
+		return;
+
+	triangleHighlighted = triangleAt( x, y );
+}
+
+function setPointerCoordinates( x, y )
+{
+	pointerX = x*ratio | 0;
+	pointerY = y*ratio | 0;
+	pointerIsDown = true;
+}
+
+function setPointer( ev, down )
+{
+	var e = ev || event;
+
+	if( !down )
+		pointerIsDown = false;
+	else if( e.touches )
+	{
+		for( var n = 0; n < e.touches.length; ++n )
+		{
+			var t = e.touches[n];
+
+			setPointerCoordinates( t.pageX, t.pageY );
+			break;
+		}
+	}
+	else if( typeof e.clientX !== "undefined" )
+		setPointerCoordinates( e.clientX, e.clientY );
+	else if( typeof e.pageX !== "undefined" )
+		setPointerCoordinates( e.pageX, e.pageY );
+}
+
+function pointerOut( ev )
+{
+	pointerIsDown = false;
+
+	ev.preventDefault();
+	return false;
+}
+
+function pointerUp( ev )
+{
+	if( finished &&
+		!restartTimer )
+	{
+		slideOut = now+slideDuration;
+		restartTimer = setTimeout( reset, slideDuration );
+	}
+
+	setPointer( ev, 0 );
+	colorTriangleAt( pointerX, pointerY );
+
+	ev.preventDefault();
+	return false;
+}
+
+function pointerMove( ev )
+{
+	setPointer( ev, pointerIsDown );
+	highlightTriangleAt( pointerX, pointerY );
+
+	ev.preventDefault();
+	return false;
+}
+
+function pointerDown( ev )
+{
+	setPointer( ev, 1 );
+	highlightTriangleAt( pointerX, pointerY );
+
+	ev.preventDefault();
+	return false;
+}
+
+function layoutTriangles( layout )
+{
+	var left = layout.left,
+		top = layout.top,
+		w = layout.width/quadCols,
+		h = layout.height/quadRows,
+		w2 = w >> 1,
+		h2 = h >> 1,
+		r,
+		c,
+		n = 0;
+
+	for( r = 0; r < quadRows; ++r )
+	{
+		var bottom = top+h;
+		var cy = top+h2;
+
+		for( c = 0; c < quadCols; ++c )
+		{
+			var right = left+w;
+			var cx = left+w2;
+
+			triangles[n++].vertices = [
+				left, bottom,
+				left, top,
+				cx, cy];
+
+			triangles[n++].vertices = [
+				left, top,
+				right, top,
+				cx, cy];
+
+			triangles[n++].vertices = [
+				right, top,
+				right, bottom,
+				cx, cy];
+
+			triangles[n++].vertices = [
+				right, bottom,
+				left, bottom,
+				cx, cy];
+
+			left = right;
+		}
+
+		left = layout.left;
+		top = bottom;
+	}
+}
+
+function calculateLayout( w, h )
+{
+	var min = Math.min( w, h ),
+		size = Math.round( min*.9 ),
+		minScore = 24*ratio;
+
+	if( w > h )
+	{
+		scoresWidth = Math.min( minScore, (width-size) >> 3 );
+		scoresHeight = height;
+
+		players[0].sy = players[1].sy = 0;
+		players[0].sx = 0;
+		players[1].sx = width-scoresWidth;
+	}
+	else
+	{
+		scoresWidth = width;
+		scoresHeight = Math.min( minScore, (height-size) >> 3 );
+
+		players[0].sx = players[1].sx = 0;
+		players[0].sy = 0;
+		players[1].sy = height-scoresHeight;
+	}
+
+	return {
+		left: (w-size) >> 1,
+		top: (h-size) >> 1,
+		width: size,
+		height: size };
+}
+
+function layoutGame()
+{
+	var min = Math.min( width, height );
+
+	normalMag = min*.01;
+	fragmentThreshold = min*.12;
+	fragmentSpeed = min*.01;
+
+	layoutTriangles( calculateLayout( width, height ) );
+}
+
+function resize()
+{
+	var w = window.innerWidth,
+		h = window.innerHeight;
+
+	width = w*ratio | 0;
+	height = h*ratio | 0;
+
+	canvas.width = width;
+	canvas.height = height;
+	canvas.style.width = w+"px";
+	canvas.style.height = h+"px";
+
+	layoutGame();
+
+	if( !started )
+		drawBackground();
+
+	if( message.resizing )
+		message.style.display = "none";
+}
+
+function scheduleResize()
+{
+	if( resizeTimer )
+		clearTimeout( resizeTimer );
+
+	if( started )
+	{
+		message.resizing = true;
+		message.text.innerHTML = "Resizing...";
+		message.style.display = "block";
+	}
+
+	resizeTimer = setTimeout( resize, 200 );
+}
+
+function createPlayers()
+{
+	function Player()
+	{
+		this.reset();
+	}
+
+	Player.prototype.reset = function()
+	{
+		this.score = 0;
+	};
+
+	players = [
+		new Player(),
+		new Player()];
+
+	playersLength = players.length;
+}
+
+function createFragments()
+{
+	function Fragment()
+	{
+		this.vertices = [];
+		this.spin = .031415;
+		this.vx = 0;
+		this.vy = 0;
+		this.color = "#fff";
+		this.live = 0;
+		this.alive = false;
+	}
+
+	Fragment.prototype.fade = function()
+	{
+		var v = this.vertices,
+			s = this.spin*factor,
+			vx = this.vx*factor,
+			vy = this.vy*factor,
+			cx = triangleCenterX( v ),
+			cy = triangleCenterY( v ),
+			x1 = v[0]-cx,
+			y1 = v[1]-cy,
+			x2 = v[2]-cx,
+			y2 = v[3]-cy,
+			x3 = v[4]-cx,
+			y3 = v[5]-cy;
+
+		v[0] = (x1*Math.cos( s )-y1*Math.sin( s ))+cx+vx;
+		v[1] = (y1*Math.cos( s )+x1*Math.sin( s ))+cy+vy;
+
+		v[2] = (x2*Math.cos( s )-y2*Math.sin( s ))+cx+vx;
+		v[3] = (y2*Math.cos( s )+x2*Math.sin( s ))+cy+vy;
+
+		v[4] = (x3*Math.cos( s )-y3*Math.sin( s ))+cx+vx;
+		v[5] = (y3*Math.cos( s )+x3*Math.sin( s ))+cy+vy;
+
+		if( --this.live < 1 )
+			this.alive = false;
+	};
+
+	fragments = [];
+	fragmentsLength = 100;
+
+	for( var n = fragmentsLength; n--; )
+		fragments[n] = new Fragment();
+}
+
+function randomColorIndex()
+{
+	return Math.random()*colorsLength | 0;
+}
+
+function createColorStack()
+{
+	var half = trianglesLength >> 1,
+		lastIdx = -1;
+
+	colorStack = [];
+	colorCursor = 0;
+
+	for( var n = half; n--; )
+	{
+		var idx;
+
+		do
+		{
+			idx = randomColorIndex();
+		} while( idx == lastIdx );
+
+		lastIdx = idx;
+
+		colorStack[n] = colors[idx];
+	}
+
+	for( var n = half; n < trianglesLength; ++n )
+		colorStack[n] = colorStack[n-half];
+
+	colorCurrent = colorStack[0];
+}
+
+function createTriangles()
+{
+	function Triangle( color )
+	{
+		this.color = color;
+		this.vertices = null;
+		this.drawnVertices = [];
+		this.colored = false;
+		this.scored = false;
+	}
+
+	var n = 0;
+
+	triangles = [];
+
+	for( var r = 0; r < quadRows; ++r )
+		for( var c = 0; c < quadCols; ++c )
+			for( var t = 4; t--; )
+				triangles[n++] = new Triangle(
+					n+r+c & 1 ?
+					"#000" :
+					"#fff" );
+
+	trianglesLength = n;
+	trianglesPerRow = quadCols << 2
+	trianglesMod = trianglesPerRow-2;
+}
+
+function reset()
+{
+	for( var n = playersLength; n--; )
+		players[n].reset();
+
+	if( (quadCols = ++quadRows) > 5 )
+		quadCols = quadRows = 2;
+
+	createTriangles();
+	createColorStack();
+	layoutGame();
+
+	message.style.display = "none";
+	finished = false;
+
+	clearTimeout( restartTimer );
+	restartTimer = null;
+}
+
+function createCanvas()
+{
+	if( !(canvas = document.createElement( "canvas" )) ||
+		!(ctx = canvas.getContext( "2d", { alpha: false } )) )
+		return false;
+
+	document.body.appendChild( canvas );
+
+	ratio =
+		(window.devicePixelRatio || 1)/
+		(ctx.webkitBackingStorePixelRatio ||
+			ctx.mozBackingStorePixelRatio ||
+			ctx.msBackingStorePixelRatio ||
+			ctx.oBackingStorePixelRatio ||
+			ctx.backingStorePixelRatio ||
+			1);
+
+	return true;
+}
+
+function init()
+{
+	if( !createCanvas() )
+	{
+		message.text.innerHTML =
+			"Sorry, this browser can't run this game.";
+
+		return;
+	}
+
+	createTriangles();
+	createColorStack();
+	createFragments();
+	createPlayers();
+
+	resize();
+	window.onresize = scheduleResize;
+
+	var d = document,
+		hit = "ontouchstart" in d ? "Touch" : "Click";
+
+	message.text.innerHTML =
+		"<h1>quadTRI</h1>"+
+		"<p>This is a tiny puzzle game.</p>"+
+		"<p>"+hit+" a triangle to color it with the background color.</p>"+
+		"<p>Make diamonds of the same color to score.</p>"+
+		"<p>"+hit+" to start!</p>";
+
+	message.onclick = function( ev )
+	{
+		message.style.display = "none";
+
+		// don't use onclick() after that; it'll interfere
+		// with onmouse*/ontouch* callbacks
+		message.onclick = function( ev )
+		{
+			(ev || event).preventDefault();
+			return false;
+		};
+
+		d.onmousedown = pointerDown;
+		d.onmousemove = pointerMove;
+		d.onmouseup = pointerUp;
+		d.onmouseout = pointerOut;
+
+		if( "ontouchstart" in d )
+		{
+			d.ontouchstart = pointerDown;
+			d.ontouchmove = pointerMove;
+			d.ontouchend = pointerUp;
+		}
+
+		started = true;
+		slideIn = new Date().getTime()+slideDuration;
+		run();
+
+		(ev || event).preventDefault();
+		return false;
+	};
+}
+
+window.onload = function()
+{
+	if( !(message = document.getElementById( "Message" )) ||
+		!(message.text = document.getElementById( "MessageText" )) )
+		return;
+
+	message.text.innerHTML = "Loading...";
+
+	// give mobile browsers some time to settle
+	// their window.innerWidth/Height values, i.e.
+	// there may still be the virtual keyboard visible
+	setTimeout( init, 500 );
+}
+
+</script>
+</body>
+</html>

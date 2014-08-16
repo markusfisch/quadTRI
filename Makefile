@@ -1,13 +1,14 @@
-OBJECTS = *.html *.ico *.png
-HTDOCS = hhsw.de@ssh.strato.de:sites/proto/ld26/
-OPTIONS = --recursive \
+HTDOCS = htdocs
+WEBROOT = hhsw.de@ssh.strato.de:sites/quadTRI
+OPTIONS = \
+	--recursive \
 	--links \
 	--update \
 	--delete-after \
 	--times \
 	--compress
 
-upsync:
+live:
 	rsync $(OPTIONS) \
-		$(OBJECTS) \
-		$(HTDOCS)
+		$(HTDOCS)/* \
+		$(WEBROOT)
