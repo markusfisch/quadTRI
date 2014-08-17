@@ -43,9 +43,9 @@ canvas
 	-webkit-transform: translateY( -50% );
 	-ms-transform: translateY( -50% );
 	transform: translateY( -50% );
-	width: 60%;
+	max-width: 40em;
 	margin: 0 auto; padding: 1em;
-	font: 20pt sans-serif; color: #333;
+	font: 16pt sans-serif; color: #333;
 	font-weight: lighter;
 	letter-spacing: .2em;
 	line-height: 150%;
@@ -70,10 +70,19 @@ h1
 	letter-spacing: .2em;
 }
 
+.Result
+{
+	padding: .5em;
+	background: #fff;
+	font-size: 120%;
+	font-weight: bolder;
+}
+
 @media screen and (max-width: 900px), screen and (max-height: 560px)
 {
 	#MessageText
 	{
+		width: 90%;
 		font-size: 16pt;
 	}
 }
@@ -82,7 +91,14 @@ h1
 {
 	#MessageText
 	{
-		font-size: 12pt;
+		width: 90%;
+		font-size: 10pt;
+	}
+
+	.Score
+	{
+		padding: .5em;
+		font-size: 10pt;
 	}
 }
 
@@ -90,6 +106,13 @@ h1
 {
 	#MessageText
 	{
+		width: 90%;
+		font-size: 8pt;
+	}
+
+	.Score
+	{
+		padding: .5em;
 		font-size: 8pt;
 	}
 }
@@ -129,20 +152,7 @@ var requestAnimFrame =
 	pointerX,
 	pointerY,
 	pointerIsDown = false,
-	edgeNames = [
-		"left",
-		"right",
-		"top",
-		"bottom"],
-	colors = [
-		"#399ed7",
-		"#9e39d7",
-		"#39d79e",
-		"#d7399e"],
-	colorsLength = colors.length,
-	colorCurrent = colors[0],
-	colorStack,
-	colorCursor = 0,
+	colorCurrent,
 	quadCols = 3,
 	quadRows = 3,
 	triangles,
@@ -492,18 +502,14 @@ function checkFinished()
 		}
 	}
 
-	message.text.innerHTML = winner > 0 ?
-		"The "+edgeNames[(width > height ? 0 : 2)+winner]+
-			" player won!" :
-		"Draw!";
+	message.text.innerHTML =
+		'<div class="Result">'+
+		(winner > -1 ?
+			players[winner].name+" player won!" :
+			"Draw!")+
+		'</div>';
 
 	message.style.display = "block";
-}
-
-function nextColor()
-{
-	colorCursor = ++colorCursor % trianglesLength;
-	colorCurrent = colorStack[colorCursor];
 }
 
 function triangleAt( x, y )
@@ -553,7 +559,7 @@ function colorTriangleAt( x, y )
 		players[playerCurrent].scoreDiv.style.backgroundColor = "#eee";
 
 		playerCurrent = ++playerCurrent % playersLength;
-		nextColor();
+		colorCurrent = players[playerCurrent].color;
 
 		players[playerCurrent].scoreDiv.style.backgroundColor = colorCurrent;
 
@@ -708,26 +714,26 @@ function calculateLayout( w, h )
 		s.left = "0px";
 		s.top = "0px";
 		s.right = "auto";
-		s.bottom = "auto";
+		s.bottom = "0px";
 
 		var s = players[1].scoreDiv.style;
 		s.left = "auto";
 		s.top = "0px";
 		s.right = "0px";
-		s.bottom = "auto";
+		s.bottom = "0px";
 	}
 	else
 	{
 		var s = players[0].scoreDiv.style;
 		s.left = "0px";
 		s.top = "0px";
-		s.right = "auto";
+		s.right = "0px";
 		s.bottom = "auto";
 
 		var s = players[1].scoreDiv.style;
 		s.left = "0px";
 		s.top = "auto";
-		s.right = "auto";
+		s.right = "0px";
 		s.bottom = "0px";
 	}
 
@@ -785,11 +791,13 @@ function scheduleResize()
 
 function createPlayers()
 {
-	function Player()
+	function Player( color, name )
 	{
 		var e = document.createElement( "div" );
 		e.className = "Score";
 		this.scoreDiv = e;
+		this.color = color;
+		this.name = name;
 
 		this.reset();
 	}
@@ -806,10 +814,13 @@ function createPlayers()
 	};
 
 	players = [
-		new Player(),
-		new Player()];
+		new Player( "#9e39d7", "Purple" ),
+		new Player( "#39d79e", "Green" )];
 
 	playersLength = players.length;
+
+	colorCurrent = players[0].color;
+	players[0].scoreDiv.style.backgroundColor = colorCurrent;
 }
 
 function createFragments()
@@ -865,31 +876,6 @@ function randomColorIndex()
 	return Math.random()*colorsLength | 0;
 }
 
-function createColorStack()
-{
-	var lastIdx = -1;
-
-	colorStack = [];
-	colorCursor = 0;
-
-	for( var n = trianglesLength; n--; )
-	{
-		var idx;
-
-		do
-		{
-			idx = randomColorIndex();
-		} while( idx == lastIdx );
-
-		lastIdx = idx;
-
-		colorStack[n] = colors[idx];
-	}
-
-	colorCurrent = colorStack[colorCursor];
-	players[playerCurrent].scoreDiv.style.backgroundColor = colorCurrent;
-}
-
 function createTriangles()
 {
 	function Triangle( color )
@@ -917,6 +903,10 @@ function createTriangles()
 	trianglesLength = n;
 	trianglesPerRow = quadCols << 2
 	trianglesMod = trianglesPerRow-2;
+
+	// take out one triangle to make draws unlikely
+	var t = triangles[Math.floor( Math.random()*trianglesLength )];
+	t.scored = t.colored = true;
 }
 
 function reset()
@@ -924,11 +914,10 @@ function reset()
 	for( var n = playersLength; n--; )
 		players[n].reset();
 
-	if( (quadCols = ++quadRows) > 5 )
+	if( (quadCols = ++quadRows) > 3 )
 		quadCols = quadRows = 2;
 
 	createTriangles();
-	createColorStack();
 	layoutGame();
 
 	message.style.display = "none";
@@ -968,7 +957,6 @@ function init()
 
 	createPlayers();
 	createTriangles();
-	createColorStack();
 	createFragments();
 
 	resize();
