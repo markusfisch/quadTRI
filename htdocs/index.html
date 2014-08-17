@@ -10,7 +10,7 @@
 html,
 body
 {
-	background: #111;
+	background: #fff;
 	margin: 0; padding: 0;
 	overflow: hidden;
 	-ms-touch-action: none;
@@ -31,8 +31,6 @@ canvas
 	right: 0; bottom: 0;
 	width: 100%; height: 100%;
 	padding: 0;
-	opacity: .75;
-	filter: alpha(opacity=75);
 	-webkit-transform-style: preserve-3d;
 	-moz-transform-style: preserve-3d;
 	transform-style: preserve-3d;
@@ -47,7 +45,7 @@ canvas
 	transform: translateY( -50% );
 	width: 60%;
 	margin: 0 auto; padding: 1em;
-	font: 20pt sans-serif; color: #fff;
+	font: 20pt sans-serif; color: #333;
 	font-weight: lighter;
 	letter-spacing: .2em;
 	line-height: 150%;
@@ -59,6 +57,17 @@ h1
 {
 	margin-top: 0;
 	padding-top: 0;
+}
+
+.Score
+{
+	position: fixed;
+	z-index: 8;
+	padding: .75em;
+	background: #eee;
+	font: 12pt sans-serif; color: #fff;
+	font-weight: bolder;
+	letter-spacing: .2em;
 }
 
 @media screen and (max-width: 900px), screen and (max-height: 560px)
@@ -93,6 +102,8 @@ h1
 
 "use strict";
 
+Math.TAU = Math.TAU || Math.PI*2;
+
 var requestAnimFrame =
 		window.requestAnimationFrame ||
 		window.webkitRequestAnimationFrame ||
@@ -118,6 +129,11 @@ var requestAnimFrame =
 	pointerX,
 	pointerY,
 	pointerIsDown = false,
+	edgeNames = [
+		"left",
+		"right",
+		"top",
+		"bottom"],
 	colors = [
 		"#399ed7",
 		"#9e39d7",
@@ -127,8 +143,8 @@ var requestAnimFrame =
 	colorCurrent = colors[0],
 	colorStack,
 	colorCursor = 0,
-	quadCols = 2,
-	quadRows = 2,
+	quadCols = 3,
+	quadRows = 3,
 	triangles,
 	trianglesLength,
 	trianglesPerRow,
@@ -142,8 +158,8 @@ var requestAnimFrame =
 	players,
 	playersLength,
 	playerCurrent = 0,
-	scoresWidth,
-	scoresHeight,
+	matching = [],
+	matchingCursor = 0,
 	offsetX = 0,
 	offsetY = 0,
 	quake = 0,
@@ -245,8 +261,7 @@ function drawTriangles()
 	{
 		var t = triangles[n];
 
-		if( t.scored ||
-			t.color == colorCurrent )
+		if( t.scored )
 			continue;
 
 		var v = t.vertices,
@@ -263,19 +278,15 @@ function drawTriangles()
 		d[4] = v[4]+cos+offsetX;
 		d[5] = v[5]+sin+offsetY;
 
-		if( t.colored )
+		if( !c &&
+			n == triangleHighlighted )
 		{
 			ctx.globalAlpha = 1;
-			ctx.fillStyle = t.color;
-		}
-		else if( n == triangleHighlighted )
-		{
-			ctx.globalAlpha = 1;
-			ctx.fillStyle = "#ffffff";
+			ctx.fillStyle = colorCurrent;
 		}
 		else
 		{
-			ctx.globalAlpha = .1;
+			ctx.globalAlpha = t.alpha;
 			ctx.fillStyle = t.color;
 		}
 
@@ -283,76 +294,6 @@ function drawTriangles()
 	}
 
 	ctx.globalAlpha = 1;
-}
-
-function drawScores()
-{
-	for( var n = playersLength; n--; )
-	{
-		var p = players[n];
-
-		if( playerCurrent == n )
-		{
-			var next = colorCursor+1,
-				left = trianglesLength-next;
-
-			ctx.globalAlpha = 1;
-
-			if( left < 0 )
-			{
-				ctx.fillStyle = "#fff";
-				ctx.fillRect(
-					p.sx,
-					p.sy,
-					scoresWidth,
-					scoresHeight );
-			}
-
-			var px = 0,
-				py = 0,
-				cw = scoresWidth,
-				ch = scoresHeight,
-				x = p.sx,
-				y = p.sy;
-
-			if( scoresWidth > scoresHeight )
-				cw = px = scoresWidth/left;
-			else
-				ch = py = scoresHeight/left;
-
-			for( var c = next; c < trianglesLength; ++c )
-			{
-				ctx.fillStyle = colorStack[c];
-				ctx.fillRect(
-					x,
-					y,
-					cw,
-					ch );
-
-				x += px;
-				y += py;
-			}
-		}
-		else
-		{
-			ctx.globalAlpha = .1;
-			ctx.fillStyle = "#000";
-			ctx.fillRect(
-				p.sx,
-				p.sy,
-				scoresWidth,
-				scoresHeight );
-		}
-	}
-
-	ctx.globalAlpha = 1;
-}
-
-function drawBackground()
-{
-	ctx.globalAlpha = 1;
-	ctx.fillStyle = colorCurrent;
-	ctx.fillRect( 0, 0, width, height );
 }
 
 function offset()
@@ -410,8 +351,9 @@ function run()
 
 	offset();
 
-	drawBackground();
-	drawScores();
+	ctx.fillStyle = "#fff";
+	ctx.fillRect( 0, 0, width, height );
+
 	drawTriangles();
 	drawFragments();
 
@@ -452,42 +394,77 @@ function getDiamondPartner( idx )
 	return yan;
 }
 
-function canScoreDiamond( idx, afterMove )
-{
-	var t = triangles[idx];
-
-	if( t.scored )
-		return -1;
-
-	var yan = getDiamondPartner( idx ),
-		y = triangles[yan];
-
-	if( y.scored )
-		return -1;
-
-	return y.color == t.color ||
-		(!afterMove && (!t.colored || !y.colored)) ? yan : -1;
-}
-
 function scoreTriangle( t )
 {
+	if( !t )
+		return;
+
 	t.scored = true;
 	quake = 10;
 
 	fragmentTriangle( t.vertices, t.color );
 }
 
-function scoreDiamond( idx, player )
+function canScore( idx, color )
 {
-	var yan = canScoreDiamond( idx, true );
+	var t = triangles[idx];
 
-	if( yan < 0 )
+	t.checked = true;
+
+	var idxYan = getDiamondPartner( idx ),
+		yan = triangles[idxYan],
+		base = (idx >> 2 << 2),
+		triInCell = idx-base,
+		idxLeft = base+(triInCell > 0 ? triInCell-1 : 3),
+		left = triangles[idxLeft],
+		idxRight = base+((triInCell+1) % 4),
+		right = triangles[idxRight];
+
+	if( !yan.checked &&
+		!yan.scored &&
+		yan.color == color )
+	{
+		matching[matchingCursor++] = yan;
+		canScore( idxYan, color );
+	}
+
+	if( !left.checked &&
+		!left.scored &&
+		left.color == color )
+	{
+		matching[matchingCursor++] = left;
+		canScore( idxLeft, color );
+	}
+
+	if( !right.checked &&
+		!right.scored &&
+		right.color == color )
+	{
+		matching[matchingCursor++] = right;
+		canScore( idxRight, color );
+	}
+}
+
+function tryToScore( idx, player )
+{
+	matchingCursor = 0;
+
+	for( var n = trianglesLength; n--; )
+		triangles[n].checked = false;
+
+	var t = triangles[idx];
+	t.checked = true;
+	matching[matchingCursor++] = t;
+
+	canScore( idx, t.color );
+
+	if( matchingCursor < 3 )
 		return;
 
-	++players[player].score;
+	players[player].score += matchingCursor;
 
-	scoreTriangle( triangles[idx] );
-	scoreTriangle( triangles[yan] );
+	for( var n = matchingCursor; n--; )
+		scoreTriangle( matching[n] );
 }
 
 function checkFinished()
@@ -511,12 +488,13 @@ function checkFinished()
 		else if( score > highest )
 		{
 			highest = score;
-			winner = n+1;
+			winner = n;
 		}
 	}
 
 	message.text.innerHTML = winner > 0 ?
-		"Player "+winner+" won!" :
+		"The "+edgeNames[(width > height ? 0 : 2)+winner]+
+			" player won!" :
 		"Draw!";
 
 	message.style.display = "block";
@@ -564,15 +542,23 @@ function colorTriangleAt( x, y )
 		var t = triangles[n];
 
 		if( t.colored )
-			return true;
+			return;
 
 		t.color = colorCurrent;
+		t.alpha = 1;
 		t.colored = true;
 
-		scoreDiamond( n, playerCurrent );
+		tryToScore( n, playerCurrent );
+
+		players[playerCurrent].scoreDiv.style.backgroundColor = "#eee";
 
 		playerCurrent = ++playerCurrent % playersLength;
 		nextColor();
+
+		players[playerCurrent].scoreDiv.style.backgroundColor = colorCurrent;
+
+		for( var p = playersLength; p--; )
+			players[p].update();
 	}
 
 	checkFinished();
@@ -582,7 +568,10 @@ function highlightTriangleAt( x, y )
 {
 	if( finished ||
 		!pointerIsDown )
+	{
+		triangleHighlighted = -1;
 		return;
+	}
 
 	triangleHighlighted = triangleAt( x, y );
 }
@@ -599,7 +588,10 @@ function setPointer( ev, down )
 	var e = ev || event;
 
 	if( !down )
+	{
 		pointerIsDown = false;
+		triangleHighlighted = -1;
+	}
 	else if( e.touches )
 	{
 		for( var n = 0; n < e.touches.length; ++n )
@@ -614,14 +606,14 @@ function setPointer( ev, down )
 		setPointerCoordinates( e.clientX, e.clientY );
 	else if( typeof e.pageX !== "undefined" )
 		setPointerCoordinates( e.pageX, e.pageY );
+
+	ev.preventDefault();
+	return false;
 }
 
 function pointerOut( ev )
 {
-	pointerIsDown = false;
-
-	ev.preventDefault();
-	return false;
+	return setPointer( ev, 0 );
 }
 
 function pointerUp( ev )
@@ -633,29 +625,26 @@ function pointerUp( ev )
 		restartTimer = setTimeout( reset, slideDuration );
 	}
 
-	setPointer( ev, 0 );
+	var result = setPointer( ev, 0 );
 	colorTriangleAt( pointerX, pointerY );
 
-	ev.preventDefault();
-	return false;
+	return result;
 }
 
 function pointerMove( ev )
 {
-	setPointer( ev, pointerIsDown );
+	var result = setPointer( ev, pointerIsDown );
 	highlightTriangleAt( pointerX, pointerY );
 
-	ev.preventDefault();
-	return false;
+	return result;
 }
 
 function pointerDown( ev )
 {
-	setPointer( ev, 1 );
+	var result = setPointer( ev, 1 );
 	highlightTriangleAt( pointerX, pointerY );
 
-	ev.preventDefault();
-	return false;
+	return result;
 }
 
 function layoutTriangles( layout )
@@ -711,26 +700,35 @@ function layoutTriangles( layout )
 function calculateLayout( w, h )
 {
 	var min = Math.min( w, h ),
-		size = Math.round( min*.9 ),
-		minScore = 24*ratio;
+		size = Math.round( min*.9 );
 
 	if( w > h )
 	{
-		scoresWidth = Math.min( minScore, (width-size) >> 3 );
-		scoresHeight = height;
+		var s = players[0].scoreDiv.style;
+		s.left = "0px";
+		s.top = "0px";
+		s.right = "auto";
+		s.bottom = "auto";
 
-		players[0].sy = players[1].sy = 0;
-		players[0].sx = 0;
-		players[1].sx = width-scoresWidth;
+		var s = players[1].scoreDiv.style;
+		s.left = "auto";
+		s.top = "0px";
+		s.right = "0px";
+		s.bottom = "auto";
 	}
 	else
 	{
-		scoresWidth = width;
-		scoresHeight = Math.min( minScore, (height-size) >> 3 );
+		var s = players[0].scoreDiv.style;
+		s.left = "0px";
+		s.top = "0px";
+		s.right = "auto";
+		s.bottom = "auto";
 
-		players[0].sx = players[1].sx = 0;
-		players[0].sy = 0;
-		players[1].sy = height-scoresHeight;
+		var s = players[1].scoreDiv.style;
+		s.left = "0px";
+		s.top = "auto";
+		s.right = "auto";
+		s.bottom = "0px";
 	}
 
 	return {
@@ -766,9 +764,6 @@ function resize()
 
 	layoutGame();
 
-	if( !started )
-		drawBackground();
-
 	if( message.resizing )
 		message.style.display = "none";
 }
@@ -792,12 +787,22 @@ function createPlayers()
 {
 	function Player()
 	{
+		var e = document.createElement( "div" );
+		e.className = "Score";
+		this.scoreDiv = e;
+
 		this.reset();
 	}
 
 	Player.prototype.reset = function()
 	{
 		this.score = 0;
+		this.update();
+	};
+
+	Player.prototype.update = function()
+	{
+		this.scoreDiv.innerHTML = this.score;
 	};
 
 	players = [
@@ -862,13 +867,12 @@ function randomColorIndex()
 
 function createColorStack()
 {
-	var half = trianglesLength >> 1,
-		lastIdx = -1;
+	var lastIdx = -1;
 
 	colorStack = [];
 	colorCursor = 0;
 
-	for( var n = half; n--; )
+	for( var n = trianglesLength; n--; )
 	{
 		var idx;
 
@@ -882,10 +886,8 @@ function createColorStack()
 		colorStack[n] = colors[idx];
 	}
 
-	for( var n = half; n < trianglesLength; ++n )
-		colorStack[n] = colorStack[n-half];
-
-	colorCurrent = colorStack[0];
+	colorCurrent = colorStack[colorCursor];
+	players[playerCurrent].scoreDiv.style.backgroundColor = colorCurrent;
 }
 
 function createTriangles()
@@ -893,6 +895,7 @@ function createTriangles()
 	function Triangle( color )
 	{
 		this.color = color;
+		this.alpha = .2;
 		this.vertices = null;
 		this.drawnVertices = [];
 		this.colored = false;
@@ -909,7 +912,7 @@ function createTriangles()
 				triangles[n++] = new Triangle(
 					n+r+c & 1 ?
 					"#000" :
-					"#fff" );
+					"#888" );
 
 	trianglesLength = n;
 	trianglesPerRow = quadCols << 2
@@ -941,8 +944,6 @@ function createCanvas()
 		!(ctx = canvas.getContext( "2d", { alpha: false } )) )
 		return false;
 
-	document.body.appendChild( canvas );
-
 	ratio =
 		(window.devicePixelRatio || 1)/
 		(ctx.webkitBackingStorePixelRatio ||
@@ -965,10 +966,10 @@ function init()
 		return;
 	}
 
+	createPlayers();
 	createTriangles();
 	createColorStack();
 	createFragments();
-	createPlayers();
 
 	resize();
 	window.onresize = scheduleResize;
@@ -978,10 +979,11 @@ function init()
 
 	message.text.innerHTML =
 		"<h1>quadTRI</h1>"+
-		"<p>This is a tiny puzzle game.</p>"+
-		"<p>"+hit+" a triangle to color it with the background color.</p>"+
-		"<p>Make diamonds of the same color to score.</p>"+
-		"<p>"+hit+" to start!</p>";
+		"<p>This is a small puzzle game for two players.</p>"+
+		"<p>"+hit+" a triangle to color it.</p>"+
+		"<p>You score if you make three or more triangles of "+
+			"the same color touch each other.</p>"+
+		"<p>"+hit+" anywhere to start!</p>";
 
 	message.onclick = function( ev )
 	{
@@ -1006,6 +1008,11 @@ function init()
 			d.ontouchmove = pointerMove;
 			d.ontouchend = pointerUp;
 		}
+
+		document.body.appendChild( canvas );
+
+		for( var n = playersLength; n--; )
+			document.body.appendChild( players[n].scoreDiv );
 
 		started = true;
 		slideIn = new Date().getTime()+slideDuration;
