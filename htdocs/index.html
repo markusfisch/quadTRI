@@ -31,6 +31,9 @@ canvas
 	right: 0; bottom: 0;
 	width: 100%; height: 100%;
 	padding: 0;
+	background: #fff;
+	opacity: .9;
+	filter: alpha(opacity=90);
 	-webkit-transform-style: preserve-3d;
 	-moz-transform-style: preserve-3d;
 	transform-style: preserve-3d;
@@ -55,8 +58,8 @@ canvas
 
 h1
 {
-	margin-top: 0;
-	padding-top: 0;
+	text-transform: none;
+	font-variant: small-caps;
 }
 
 .Score
@@ -72,9 +75,7 @@ h1
 
 .Result
 {
-	padding: .5em;
-	background: #fff;
-	font-size: 120%;
+	font-size: 200%;
 	font-weight: bolder;
 }
 
@@ -124,8 +125,6 @@ h1
 <script>
 
 "use strict";
-
-Math.TAU = Math.TAU || Math.PI*2;
 
 var requestAnimFrame =
 		window.requestAnimationFrame ||
@@ -415,7 +414,7 @@ function scoreTriangle( t )
 	fragmentTriangle( t.vertices, t.color );
 }
 
-function canScore( idx, color )
+function canScore( idx, color, empty )
 {
 	var t = triangles[idx];
 
@@ -432,30 +431,30 @@ function canScore( idx, color )
 
 	if( !yan.checked &&
 		!yan.scored &&
-		yan.color == color )
+		(yan.color == color || (empty && !yan.colored)) )
 	{
 		matching[matchingCursor++] = yan;
-		canScore( idxYan, color );
+		canScore( idxYan, color, empty );
 	}
 
 	if( !left.checked &&
 		!left.scored &&
-		left.color == color )
+		(left.color == color || (empty && !left.colored)) )
 	{
 		matching[matchingCursor++] = left;
-		canScore( idxLeft, color );
+		canScore( idxLeft, color, empty );
 	}
 
 	if( !right.checked &&
 		!right.scored &&
-		right.color == color )
+		(right.color == color || (empty && !right.colored)) )
 	{
 		matching[matchingCursor++] = right;
-		canScore( idxRight, color );
+		canScore( idxRight, color, empty );
 	}
 }
 
-function tryToScore( idx, player )
+function findMatches( idx, color, empty )
 {
 	matchingCursor = 0;
 
@@ -466,7 +465,14 @@ function tryToScore( idx, player )
 	t.checked = true;
 	matching[matchingCursor++] = t;
 
-	canScore( idx, t.color );
+	canScore( idx, color ? color : t.color, empty );
+
+	return matchingCursor;
+}
+
+function tryToScore( idx, player )
+{
+	findMatches( idx );
 
 	if( matchingCursor < 3 )
 		return;
@@ -479,33 +485,47 @@ function tryToScore( idx, player )
 
 function checkFinished()
 {
+	var available = 0;
+
 	for( var n = trianglesLength; n--; )
 		if( !triangles[n].colored )
-			return;
+			++available;
+
+	for( var p = playerCurrent; available; --available, ++p )
+	{
+		var color = players[p % playersLength].color;
+
+		for( var n = trianglesLength; n--; )
+			if( !triangles[n].colored &&
+				findMatches( n, color, true ) > 2 )
+				return;
+	}
 
 	finished = true;
 	triangleHighlighted = -1;
 
 	var highest = -1,
-		winner = -1;
+		winner = null;
 
 	for( var n = playersLength; n--; )
 	{
-		var score = players[n].score;
+		var player = players[n],
+			score = player.score;
 
 		if( score == highest )
-			winner = -1;
+			winner = null;
 		else if( score > highest )
 		{
 			highest = score;
-			winner = n;
+			winner = player;
 		}
 	}
 
 	message.text.innerHTML =
 		'<div class="Result">'+
-		(winner > -1 ?
-			players[winner].name+" player won!" :
+		(winner ?
+			'<span style="color: '+winner.color+'">'+
+				winner.name+" player won!</span>" :
 			"Draw!")+
 		'</div>';
 
@@ -814,8 +834,8 @@ function createPlayers()
 	};
 
 	players = [
-		new Player( "#9e39d7", "Purple" ),
-		new Player( "#39d79e", "Green" )];
+		new Player( "#399ed7", "Blue" ),
+		new Player( "#a8cd43", "Green" )];
 
 	playersLength = players.length;
 
@@ -903,10 +923,6 @@ function createTriangles()
 	trianglesLength = n;
 	trianglesPerRow = quadCols << 2
 	trianglesMod = trianglesPerRow-2;
-
-	// take out one triangle to make draws unlikely
-	var t = triangles[Math.floor( Math.random()*trianglesLength )];
-	t.scored = t.colored = true;
 }
 
 function reset()
@@ -962,16 +978,24 @@ function init()
 	resize();
 	window.onresize = scheduleResize;
 
+	document.body.appendChild( canvas );
+
+	for( var n = playersLength; n--; )
+		document.body.appendChild( players[n].scoreDiv );
+
+	slideIn = new Date().getTime()+slideDuration;
+	run();
+
 	var d = document,
 		hit = "ontouchstart" in d ? "Touch" : "Click";
 
 	message.text.innerHTML =
 		"<h1>quadTRI</h1>"+
-		"<p>This is a small puzzle game for two players.</p>"+
-		"<p>"+hit+" a triangle to color it.</p>"+
-		"<p>You score if you make three or more triangles of "+
-			"the same color touch each other.</p>"+
-		"<p>"+hit+" anywhere to start!</p>";
+		"<p>A small puzzle game for two players.</p>"+
+		"<p>"+hit+" a triangle to color it. "+
+			"Make three or more triangles of "+
+			"the same color touch each other to score.</p>"+
+		"<p>"+hit+" anywhere to start.</p>";
 
 	message.onclick = function( ev )
 	{
@@ -997,14 +1021,7 @@ function init()
 			d.ontouchend = pointerUp;
 		}
 
-		document.body.appendChild( canvas );
-
-		for( var n = playersLength; n--; )
-			document.body.appendChild( players[n].scoreDiv );
-
 		started = true;
-		slideIn = new Date().getTime()+slideDuration;
-		run();
 
 		(ev || event).preventDefault();
 		return false;
