@@ -848,7 +848,6 @@ function createPlayers()
 	playersLength = players.length;
 
 	colorCurrent = players[0].color;
-	players[0].scoreDiv.style.backgroundColor = colorCurrent;
 }
 
 function createFragments()
@@ -904,7 +903,7 @@ function createTriangles()
 	function Triangle( color )
 	{
 		this.color = color;
-		this.alpha = .2;
+		this.alpha = .15;
 		this.vertices = null;
 		this.drawnVertices = [];
 		this.colored = false;
@@ -920,8 +919,8 @@ function createTriangles()
 			for( var t = 4; t--; )
 				triangles[n++] = new Triangle(
 					n+r+c & 1 ?
-					"#000" :
-					"#888" );
+					"#111" :
+					"#444" );
 
 	trianglesLength = n;
 	trianglesPerRow = quadCols << 2
@@ -1025,6 +1024,7 @@ function init()
 			d.ontouchend = pointerUp;
 		}
 
+		players[0].scoreDiv.style.backgroundColor = colorCurrent;
 		started = true;
 
 		(ev || event).preventDefault();
