@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
 <title>quadTRI</title>
 <link rel="shortcut icon" href="icon.png"/>
+<link rel="apple-touch-icon-precomposed" href="icon.png"/>
 <style>
 
 html,
@@ -616,7 +617,7 @@ function setPointerCoordinates( x, y )
 	pointerIsDown = true;
 }
 
-function setPointer( ev, down )
+function setPointers( ev, down )
 {
 	var e = ev || event;
 
@@ -640,13 +641,13 @@ function setPointer( ev, down )
 	else if( typeof e.pageX !== "undefined" )
 		setPointerCoordinates( e.pageX, e.pageY );
 
-	ev.preventDefault();
+	e.preventDefault();
 	return false;
 }
 
 function pointerOut( ev )
 {
-	return setPointer( ev, 0 );
+	return setPointers( ev, 0 );
 }
 
 function pointerUp( ev )
@@ -658,7 +659,7 @@ function pointerUp( ev )
 		restartTimer = setTimeout( reset, slideDuration );
 	}
 
-	var result = setPointer( ev, 0 );
+	var result = setPointers( ev, 0 );
 	colorTriangleAt( pointerX, pointerY );
 
 	return result;
@@ -666,7 +667,7 @@ function pointerUp( ev )
 
 function pointerMove( ev )
 {
-	var result = setPointer( ev, pointerIsDown );
+	var result = setPointers( ev, pointerIsDown );
 	highlightTriangleAt( pointerX, pointerY );
 
 	return result;
@@ -674,7 +675,7 @@ function pointerMove( ev )
 
 function pointerDown( ev )
 {
-	var result = setPointer( ev, 1 );
+	var result = setPointers( ev, 1 );
 	highlightTriangleAt( pointerX, pointerY );
 
 	return result;
