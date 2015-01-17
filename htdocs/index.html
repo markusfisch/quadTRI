@@ -365,6 +365,8 @@ function offset()
 
 function run()
 {
+	requestAnimFrame( run );
+
 	now = new Date().getTime();
 	factor = (now-last)/16;
 	last = now;
@@ -376,8 +378,6 @@ function run()
 
 	drawTriangles();
 	drawFragments();
-
-	requestAnimFrame( run );
 }
 
 function getDiamondPartner( idx )
