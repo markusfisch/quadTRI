@@ -73,15 +73,10 @@ h1
 	color: #a8cd43;
 }
 
-.Score
+.Scores
 {
 	position: fixed;
 	z-index: 8;
-	padding: .75em;
-	background: #eee;
-	font: 12pt sans-serif; color: #fff;
-	font-weight: bolder;
-	letter-spacing: .2em;
 }
 
 .Result
@@ -106,12 +101,6 @@ h1
 		width: 90%;
 		font-size: 10pt;
 	}
-
-	.Score
-	{
-		padding: .5em;
-		font-size: 10pt;
-	}
 }
 
 @media screen and (max-width: 360px), screen and (max-height: 360px)
@@ -119,12 +108,6 @@ h1
 	#MessageText
 	{
 		width: 90%;
-		font-size: 8pt;
-	}
-
-	.Score
-	{
-		padding: .5em;
 		font-size: 8pt;
 	}
 }
@@ -584,12 +567,8 @@ function colorTriangleAt( x, y )
 
 		tryToScore( n, playerCurrent );
 
-		players[playerCurrent].scoreDiv.style.backgroundColor = "#eee";
-
 		playerCurrent = ++playerCurrent % playersLength;
 		colorCurrent = players[playerCurrent].color;
-
-		players[playerCurrent].scoreDiv.style.backgroundColor = colorCurrent;
 
 		for( var p = playersLength; p--; )
 			players[p].update();
@@ -734,35 +713,38 @@ function layoutTriangles( layout )
 function calculateLayout( w, h )
 {
 	var min = Math.min( w, h ),
-		size = Math.round( min*.9 );
+		size = Math.round( min*.9 ),
+		score = "8px";
 
-	if( w > h )
+	for( var n = 2; n--; )
 	{
-		var s = players[0].scoreDiv.style;
-		s.left = "0px";
-		s.top = "0px";
-		s.right = "auto";
-		s.bottom = "0px";
+		var p = players[n],
+			s = p.scoreDiv.style;
 
-		var s = players[1].scoreDiv.style;
-		s.left = "auto";
-		s.top = "0px";
-		s.right = "0px";
-		s.bottom = "0px";
-	}
-	else
-	{
-		var s = players[0].scoreDiv.style;
-		s.left = "0px";
-		s.top = "0px";
-		s.right = "0px";
-		s.bottom = "auto";
+		if( w > h )
+		{
+			s.top = "0px";
+			s.bottom = "0px";
 
-		var s = players[1].scoreDiv.style;
-		s.left = "0px";
-		s.top = "auto";
-		s.right = "0px";
-		s.bottom = "0px";
+			s.left = n == 0 ? "0px" : "auto";
+			s.right = n == 0 ? "auto" : "0px";
+
+			s.width = score;
+			s.height = "0%";
+		}
+		else
+		{
+			s.top = n == 0 ? "0px" : "auto";
+			s.bottom = n == 0 ? "auto" : "0px";
+
+			s.left = "0px";
+			s.right = "0px";
+
+			s.width = "0%";
+			s.height = score;
+		}
+
+		p.update();
 	}
 
 	return {
@@ -822,7 +804,10 @@ function createPlayers()
 	function Player( color, name )
 	{
 		var e = document.createElement( "div" );
-		e.className = "Score";
+
+		e.className = "Scores";
+		e.style.backgroundColor = color;
+
 		this.scoreDiv = e;
 		this.color = color;
 		this.name = name;
@@ -838,7 +823,13 @@ function createPlayers()
 
 	Player.prototype.update = function()
 	{
-		this.scoreDiv.innerHTML = this.score;
+		var s = this.scoreDiv.style,
+			p = Math.round( 100/trianglesLength*this.score )+"%";
+
+		if( width > height )
+			s.height = p;
+		else
+			s.width = p;
 	};
 
 	players = [
@@ -1024,7 +1015,6 @@ function init()
 			d.ontouchend = pointerUp;
 		}
 
-		players[0].scoreDiv.style.backgroundColor = colorCurrent;
 		started = true;
 
 		(ev || event).preventDefault();
